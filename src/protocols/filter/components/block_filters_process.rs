@@ -148,7 +148,7 @@ impl<'a> BlockFiltersProcess<'a> {
                         .filter
                         .storage
                         .get_check_points(cached_check_point_index, 1)
-                        .get(0)
+                        .first()
                         .cloned()
                         .expect("all check points before finalized should be existed");
                     (cached_check_point, cached_block_filter_hashes)

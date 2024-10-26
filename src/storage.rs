@@ -591,7 +591,7 @@ impl Storage {
         let index = self.get_max_check_point_index();
         let hash = self
             .get_check_points(index, 1)
-            .get(0)
+            .first()
             .cloned()
             .expect("db get last check point should be ok");
         (index, hash)
