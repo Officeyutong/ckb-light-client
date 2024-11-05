@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-use ckb_chain::chain::ChainController;
+use ckb_chain::ChainController;
 use ckb_chain_spec::consensus::Consensus;
 use ckb_merkle_mountain_range::leaf_index_to_pos;
 use ckb_shared::{Shared, Snapshot};
@@ -262,7 +262,7 @@ pub(crate) trait RunningChainExt: ChainExt {
         let block_number = block.number();
         let is_ok = self
             .controller()
-            .process_block(Arc::new(block))
+            .blocking_process_block(Arc::new(block))
             .expect("process block");
         assert!(is_ok, "failed to process block {}", block_number);
         while self

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ckb_app_config::{BlockAssemblerConfig, NetworkConfig};
-use ckb_chain::chain::{ChainController, ChainService};
+use ckb_chain::{start_chain_services, ChainController};
 use ckb_chain_spec::{consensus::Consensus, ChainSpec};
 use ckb_jsonrpc_types::JsonBytes;
 use ckb_network::{Flags, NetworkController, NetworkService, NetworkState};
@@ -108,8 +108,7 @@ impl MockChain {
         let network = dummy_network(&shared);
         pack.take_tx_pool_builder().start(network);
 
-        let chain_service = ChainService::new(shared.clone(), pack.take_proposal_table());
-        let chain_controller = chain_service.start::<&str>(None);
+        let chain_controller = start_chain_services(pack.take_chain_services_builder());
 
         MockRunningChain {
             storage,

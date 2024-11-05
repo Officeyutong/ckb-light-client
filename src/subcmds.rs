@@ -117,7 +117,7 @@ impl RunConfig {
             ),
         ];
 
-        let (mut handle, mut handle_stop_rx, _stop_handler) = new_global_runtime();
+        let (mut handle, mut handle_stop_rx, _stop_handler) = new_global_runtime(None);
 
         let network_controller = NetworkService::new(
             Arc::clone(&network_state),
