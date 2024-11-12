@@ -1,0 +1,69 @@
+[package]
+name = "ckb-light-client-lib"
+version = "0.3.8"
+authors = ["Nervos Core Dev <dev@nervos.org>"]
+edition = "2021"
+license = "MIT"
+description = "A CKB light client based on FlyClient."
+homepage = "https://github.com/nervosnetwork/ckb-light-client"
+repository = "https://github.com/nervosnetwork/ckb-light-client"
+
+[dependencies]
+ckb-app-config = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-constant = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-error = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-script = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-verification = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-hash = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+
+log = "0.4.14"
+path-clean = "0.1.0"
+rand = "0.8.5"
+dashmap = "5.3"
+linked-hash-map = "0.5.6"
+governor = "0.6.3"
+serde = { version = "1.0.136", features = ["derive"] }
+ckb-merkle-mountain-range = "0.5.1"
+golomb-coded-set = "0.2.1"
+numext-fixed-uint = { version = "0.1", features = [
+    "support_rand",
+    "support_heapsize",
+    "support_serde",
+] }
+
+anyhow = "1.0.56"
+thiserror = "1.0.30"
+toml = "0.5.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rocksdb = { package = "ckb-rocksdb", version = "=0.21.1", features = [
+    "snappy",
+], default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1.0"
+wasm-bindgen = "0.2.63"
+idb = "0.6"
+serde-wasm-bindgen = "0.6.5"
+
+[dev-dependencies]
+ckb-shared = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-chain = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-tx-pool = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-store = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46", features = [
+    "enable_faketime",
+] }
+tempfile = "3.0"
+rand = "0.6"
+serde_json = "1.0"
+tokio = { version = "1.20" }
+lazy_static = "1.3.0"
+env_logger = "0.11"

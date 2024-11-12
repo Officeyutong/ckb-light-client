@@ -9,7 +9,7 @@ path = "data/store"
 [network]
 path = "data/network"
 
-listen_addresses = ["/ip4/0.0.0.0/tcp/8118"]
+listen_addresses = ["/ip4/0.0.0.0/tcp/8110"]
 ### Specify the public and routable network addresses
 # public_addresses = []
 
@@ -39,7 +39,9 @@ bootnodes = [
   # Frankfurt, Europe
   "/ip4/18.192.147.65/tcp/8111/p2p/QmWcEhsMNRcfJit62EbKgzpgtAJZX1G3Ur4shXjcvLsYDb",
   # Sydney, Oceania
-  "/ip4/13.236.13.195/tcp/8111/p2p/QmfUTZxsse7rFJTJfoUv8bbStoDLETxst5nJEpJozNuAnH"
+  "/ip4/13.236.13.195/tcp/8111/p2p/QmfUTZxsse7rFJTJfoUv8bbStoDLETxst5nJEpJozNuAnH",
+  # "/ip4/127.0.0.1/tcp/8118/ws/p2p/QmTgML5rVBWgtNV2o7kgnx8yDSS9vovkxiNNo2spyho8qY",
+  # "/ip4/127.0.0.1/tcp/8116/p2p/QmTgML5rVBWgtNV2o7kgnx8yDSS9vovkxiNNo2spyho8qY",
 ]
 
 ### Whitelist-only mode
