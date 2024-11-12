@@ -3,15 +3,17 @@ use ckb_network::{
     async_trait, bytes::Bytes, extract_peer_id, CKBProtocolContext, CKBProtocolHandler, PeerId,
     PeerIndex,
 };
-use ckb_types::core::{Cycle, TransactionView};
+use ckb_types::core::{Cycle, EpochNumberWithFraction, TransactionView};
 use ckb_types::{packed, prelude::*};
 use linked_hash_map::LinkedHashMap;
 use log::{debug, trace, warn};
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use crate::protocols::{Peers, BAD_MESSAGE_BAN_TIME};
+use crate::storage::Storage;
 
 const CHECK_PENDING_TXS_TOKEN: u64 = 0;
 
@@ -22,6 +24,7 @@ pub(crate) struct RelayProtocol {
     // Pending transactions which are waiting for relay
     pending_txs: Arc<RwLock<PendingTxs>>,
     consensus: Consensus,
+    storage: Storage,
     v3: bool,
 }
 
@@ -86,6 +89,7 @@ impl RelayProtocol {
         pending_txs: Arc<RwLock<PendingTxs>>,
         connected_peers: Arc<Peers>,
         consensus: Consensus,
+        storage: Storage,
         v3: bool,
     ) -> Self {
         Self {
@@ -93,6 +97,7 @@ impl RelayProtocol {
             pending_txs,
             connected_peers,
             consensus,
+            storage,
             v3,
         }
     }
@@ -122,13 +127,20 @@ impl CKBProtocolHandler for RelayProtocol {
             });
 
         let epoch = match prove_state_epoch {
-            Some(epoch) => epoch.number(),
+            Some(proved) => {
+                let stored: EpochNumberWithFraction =
+                    self.storage.get_last_state().1.raw().epoch().unpack();
+                if stored > proved {
+                    trace!("RelayProtocol.connected peer={} got a stale epoch, ignore and close the protocol", peer);
+                    close_protocol(nc.as_ref(), peer);
+                    return;
+                } else {
+                    proved.number()
+                }
+            }
             None => {
-                debug!("RelayProtocol.connected peer={} failed to get epoch, ignore and close the protocol", peer);
-                let _ = nc
-                    .p2p_control()
-                    .expect("p2p_control should be exist")
-                    .close_protocol(peer, nc.protocol_id());
+                trace!("RelayProtocol.connected peer={} failed to get epoch, ignore and close the protocol", peer);
+                close_protocol(nc.as_ref(), peer);
                 return;
             }
         };
@@ -308,10 +320,7 @@ impl CKBProtocolHandler for RelayProtocol {
                                     "RelayProtocol.notify peer={} is inactive, close the protocol",
                                     peer
                                 );
-                                let _ = nc
-                                    .p2p_control()
-                                    .expect("p2p_control should be exist")
-                                    .close_protocol(peer, nc.protocol_id());
+                                close_protocol(nc.as_ref(), peer);
                             }
                         }
                     }
@@ -322,4 +331,11 @@ impl CKBProtocolHandler for RelayProtocol {
             }
         }
     }
+}
+
+fn close_protocol(nc: &dyn CKBProtocolContext, peer: PeerIndex) {
+    let _ = nc
+        .p2p_control()
+        .expect("p2p_control should be exist")
+        .close_protocol(peer, nc.protocol_id());
 }
