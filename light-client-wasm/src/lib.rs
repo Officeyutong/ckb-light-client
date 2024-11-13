@@ -1,11 +1,8 @@
 mod utils;
 
-use std::{
-    ops::Bound,
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc, RwLock,
-    },
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc, RwLock,
 };
 
 use ckb_light_client_lib::{
@@ -14,21 +11,30 @@ use ckb_light_client_lib::{
         FilterProtocol, LightClientProtocol, Peers, PendingTxs, RelayProtocol, SyncProtocol,
         BAD_MESSAGE_ALLOWED_EACH_HOUR, CHECK_POINT_INTERVAL,
     },
-    service::{Cell, Order, Pagination, ScriptStatus, ScriptType, SearchKey, SetScriptsCommand},
-    storage::{extract_raw_data, Direction, Key, KeyPrefix, Storage, StorageWithChainData},
+    service::{
+        Cell, CellType, CellsCapacity, FetchStatus, LocalNode, LocalNodeProtocol, Order,
+        Pagination, PeerSyncState, RemoteNode, ScriptStatus, ScriptType, SearchKey,
+        SetScriptsCommand, Status, TransactionWithStatus, Tx, TxStatus, TxWithCell, TxWithCells,
+    },
+    storage::{
+        self, extract_raw_data, CursorDirection, Key, KeyPrefix, Storage, StorageWithChainData,
+        LAST_STATE_KEY,
+    },
     types::RunEnv,
+    verify::{generate_temporary_db, verify_tx},
 };
 use wasm_bindgen::prelude::*;
 
-use ckb_chain_spec::ChainSpec;
-use ckb_jsonrpc_types::{Deserialize, JsonBytes, Serialize};
+use ckb_chain_spec::{consensus::Consensus, ChainSpec};
+use ckb_jsonrpc_types::{JsonBytes, Transaction};
 use ckb_network::{
-    CKBProtocol, CKBProtocolHandler, Flags, NetworkController, NetworkService, NetworkState,
-    SupportProtocols,
+    extract_peer_id, CKBProtocol, CKBProtocolHandler, Flags, NetworkController, NetworkService,
+    NetworkState, SupportProtocols,
 };
 use ckb_resource::Resource;
 use ckb_stop_handler::broadcast_exit_signals;
-use ckb_types::{core, packed, prelude::*};
+use ckb_systemtime::{unix_time_as_millis, Instant};
+use ckb_types::{core, packed, prelude::*, H256};
 
 use std::sync::OnceLock;
 
@@ -43,6 +49,8 @@ static DEV_SOURCE: &'static str = include_str!("../../../ckb/node3/specs/dev.tom
 static STORAGE_WITH_DATA: OnceLock<StorageWithChainData> = OnceLock::new();
 
 static NET_CONTROL: OnceLock<NetworkController> = OnceLock::new();
+
+static CONSENSUS: OnceLock<Arc<Consensus>> = OnceLock::new();
 
 /// 0b0 init
 /// 0b1 start
@@ -87,7 +95,6 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
     let genesis = consensus.genesis_block().data();
 
     storage.init_genesis_block(genesis).await;
-    log::info!("4");
 
     let pending_txs = Arc::new(RwLock::new(PendingTxs::default()));
     let max_outbound_peers = config.network.max_outbound_peers;
@@ -111,15 +118,12 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
         SupportProtocols::LightClient.protocol_id(),
         SupportProtocols::Filter.protocol_id(),
     ];
-    log::info!("3");
     let peers = Arc::new(Peers::new(
         max_outbound_peers,
         CHECK_POINT_INTERVAL,
         storage.get_last_check_point_async().await,
         BAD_MESSAGE_ALLOWED_EACH_HOUR,
     ));
-
-    log::info!("7");
 
     let sync_protocol = SyncProtocol::new(storage.clone(), Arc::clone(&peers));
     let relay_protocol_v2 = RelayProtocol::new(
@@ -194,13 +198,15 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
 
     STORAGE_WITH_DATA.get_or_init(|| storage_with_data);
     NET_CONTROL.get_or_init(|| network_controller);
+    CONSENSUS.get_or_init(|| Arc::new(consensus));
     change_status(0b1);
     Ok(())
 }
 
 #[wasm_bindgen]
-pub fn stop() {
+pub async fn stop() {
     broadcast_exit_signals();
+    STORAGE_WITH_DATA.get().unwrap().storage().shutdown().await;
     change_status(0b10);
 }
 
@@ -208,6 +214,9 @@ use ckb_types::prelude::IntoHeaderView;
 
 #[wasm_bindgen]
 pub async fn get_tip_header() -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
     Ok(serde_wasm_bindgen::to_value(&Into::<
         ckb_jsonrpc_types::HeaderView,
     >::into(
@@ -221,35 +230,222 @@ pub async fn get_tip_header() -> Result<JsValue, JsValue> {
     ))?)
 }
 
-// #[wasm_bindgen]
-// pub fn get_genesis_block() -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+#[wasm_bindgen]
+pub async fn get_genesis_block() -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+    Ok(serde_wasm_bindgen::to_value(&Into::<
+        ckb_jsonrpc_types::BlockView,
+    >::into(
+        STORAGE_WITH_DATA
+            .get()
+            .unwrap()
+            .storage()
+            .get_genesis_block_async()
+            .await
+            .into_view(),
+    ))?)
+}
 
-// #[wasm_bindgen]
-// pub fn get_header(hash: &[u8]) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+#[wasm_bindgen]
+pub async fn get_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+    let block_hash = H256::from_slice(&hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let swc = STORAGE_WITH_DATA.get().unwrap();
+    let header_view: Option<ckb_jsonrpc_types::HeaderView> = swc
+        .storage()
+        .get_header(&block_hash.pack())
+        .await
+        .map(Into::into);
 
-// #[wasm_bindgen]
-// pub fn fetch_header(hash: &[u8]) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+    Ok(serde_wasm_bindgen::to_value(&header_view)?)
+}
 
-// #[wasm_bindgen]
-// pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+#[wasm_bindgen]
+pub async fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
 
-// #[wasm_bindgen]
-// pub fn local_node_info() -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+    let block_hash = H256::from_slice(&hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let swc = STORAGE_WITH_DATA.get().unwrap();
 
-// #[wasm_bindgen]
-// pub fn get_peers() -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+    if let Some(value) = swc.storage().get_header(&block_hash.pack()).await {
+        return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+            ckb_jsonrpc_types::HeaderView,
+        >::Fetched {
+            data: value.into(),
+        })?);
+    }
+
+    let now = unix_time_as_millis();
+    if let Some((added_ts, first_sent, missing)) = swc.get_header_fetch_info(&block_hash) {
+        if missing {
+            // re-fetch the header
+            swc.add_fetch_header(block_hash, now);
+            return Ok(serde_wasm_bindgen::to_value(
+                &FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound,
+            )?);
+        } else if first_sent > 0 {
+            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+                ckb_jsonrpc_types::HeaderView,
+            >::Fetching {
+                first_sent: first_sent.into(),
+            })?);
+        } else {
+            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+                ckb_jsonrpc_types::HeaderView,
+            >::Added {
+                timestamp: added_ts.into(),
+            })?);
+        }
+    } else {
+        swc.add_fetch_header(block_hash, now);
+    }
+    Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+        ckb_jsonrpc_types::HeaderView,
+    >::Added {
+        timestamp: now.into(),
+    })?)
+}
+
+#[wasm_bindgen]
+pub async fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+
+    let tx: Transaction = serde_wasm_bindgen::from_value(tx)?;
+    let tx: packed::Transaction = tx.into();
+    let tx = tx.into_view();
+
+    let swc = STORAGE_WITH_DATA.get().unwrap();
+    let tmpdb = generate_temporary_db(swc, tx.clone())
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let consensus = CONSENSUS.get().unwrap();
+
+    let cycles = verify_tx(
+        tx.clone(),
+        &tmpdb,
+        Arc::clone(consensus),
+        &swc.storage().get_last_state_async().await.1.into_view(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
+    Ok(serde_wasm_bindgen::to_value(
+        &ckb_jsonrpc_types::EstimateCycles {
+            cycles: cycles.into(),
+        },
+    )?)
+}
+
+const MAX_ADDRS: usize = 50;
+
+#[wasm_bindgen]
+pub async fn local_node_info() -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+
+    let network_controller = NET_CONTROL.get().unwrap();
+    Ok(serde_wasm_bindgen::to_value(&LocalNode {
+        version: network_controller.version().to_owned(),
+        node_id: network_controller.node_id(),
+        active: network_controller.is_active(),
+        addresses: network_controller
+            .public_urls(MAX_ADDRS)
+            .into_iter()
+            .map(|(address, score)| ckb_jsonrpc_types::NodeAddress {
+                address,
+                score: u64::from(score).into(),
+            })
+            .collect(),
+        protocols: network_controller
+            .protocols()
+            .into_iter()
+            .map(|(protocol_id, name, support_versions)| LocalNodeProtocol {
+                id: (protocol_id.value() as u64).into(),
+                name,
+                support_versions,
+            })
+            .collect::<Vec<_>>(),
+        connections: (network_controller.connected_peers().len() as u64).into(),
+    })?)
+}
+
+#[wasm_bindgen]
+pub async fn get_peers() -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+
+    let network_controller = NET_CONTROL.get().unwrap();
+    let swc = STORAGE_WITH_DATA.get().unwrap();
+    let peers: Vec<RemoteNode> = network_controller
+        .connected_peers()
+        .iter()
+        .map(|(peer_index, peer)| {
+            let mut addresses = vec![&peer.connected_addr];
+            addresses.extend(peer.listened_addrs.iter());
+
+            let node_addresses = addresses
+                .iter()
+                .map(|addr| {
+                    let score = network_controller
+                        .addr_info(addr)
+                        .map(|addr_info| addr_info.score)
+                        .unwrap_or(1);
+                    let non_negative_score = if score > 0 { score as u64 } else { 0 };
+                    ckb_jsonrpc_types::NodeAddress {
+                        address: addr.to_string(),
+                        score: non_negative_score.into(),
+                    }
+                })
+                .collect();
+
+            RemoteNode {
+                version: peer
+                    .identify_info
+                    .as_ref()
+                    .map(|info| info.client_version.clone())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                node_id: extract_peer_id(&peer.connected_addr)
+                    .map(|peer_id| peer_id.to_base58())
+                    .unwrap_or_default(),
+                addresses: node_addresses,
+                connected_duration: (Instant::now()
+                    .saturating_duration_since(peer.connected_time)
+                    .as_millis() as u64)
+                    .into(),
+                sync_state: swc
+                    .peers()
+                    .get_state(peer_index)
+                    .map(|state| PeerSyncState {
+                        requested_best_known_header: state
+                            .get_prove_request()
+                            .map(|request| request.get_last_header().header().to_owned().into()),
+                        proved_best_known_header: state
+                            .get_prove_state()
+                            .map(|request| request.get_last_header().header().to_owned().into()),
+                    }),
+                protocols: peer
+                    .protocols
+                    .iter()
+                    .map(
+                        |(protocol_id, protocol_version)| ckb_jsonrpc_types::RemoteNodeProtocol {
+                            id: (protocol_id.value() as u64).into(),
+                            version: protocol_version.clone(),
+                        },
+                    )
+                    .collect(),
+            }
+        })
+        .collect();
+    Ok(serde_wasm_bindgen::to_value(&peers)?)
+}
 
 #[wasm_bindgen]
 pub fn get_script_example() -> JsValue {
@@ -301,6 +497,9 @@ pub async fn set_scripts(
     scripts: Vec<JsValue>,
     command: Option<SetScriptsCommand>,
 ) -> Result<(), JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
     let scripts: Vec<ScriptStatus> = scripts
         .into_iter()
         .map(|v| serde_wasm_bindgen::from_value::<ScriptStatus>(v))
@@ -328,7 +527,7 @@ pub async fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
         .get()
         .unwrap()
         .storage()
-        .get_filter_scripts_async()
+        .get_filter_scripts()
         .await;
 
     Ok(scripts
@@ -377,25 +576,20 @@ pub async fn get_cells(
     ) = build_filter_options(search_key)?;
 
     let storage = STORAGE_WITH_DATA.get().unwrap().storage();
-    let snapshot = storage.snapshot();
 
-    let iter: Box<dyn Iterator<Item = (&Vec<u8>, &Vec<u8>)>> = match direction {
-        Direction::Forward => Box::new(
-            snapshot
-                .range((Bound::Included(from_key.clone()), Bound::Unbounded))
-                .take_while(|(key, _value)| key.starts_with(&prefix)),
-        ),
-        Direction::Reverse => Box::new(
-            snapshot
-                .range((Bound::Included(from_key.clone()), Bound::Unbounded))
-                .rev()
-                .take_while(|(key, _value)| key.starts_with(&prefix)),
-        ),
-    };
+    let kvs: Vec<_> = storage
+        .collect_iterator(
+            from_key,
+            direction,
+            Box::new(move |key| key.starts_with(&prefix)),
+            limit,
+            skip,
+        )
+        .await;
 
     let mut cells = Vec::new();
     let mut last_key = Vec::new();
-    for (key, value) in iter.skip(skip) {
+    for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
         let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
         let output_index = u32::from_be_bytes(
             key[key.len() - 4..]
@@ -416,6 +610,7 @@ pub async fn get_cells(
         let tx = packed::Transaction::from_slice(
             &storage
                 .get(&Key::TxHash(&tx_hash).into_vec())
+                .await
                 .unwrap()
                 .expect("stored tx")[12..],
         )
@@ -493,10 +688,6 @@ pub async fn get_cells(
             }
         }
 
-        if cells.len() >= limit {
-            break;
-        }
-
         last_key = key.to_vec();
 
         cells.push(Cell {
@@ -518,35 +709,564 @@ pub async fn get_cells(
     })?)
 }
 
-// #[wasm_bindgen]
-// pub fn get_transactions(
-//     search_key: JsValue,
-//     order: Order,
-//     limit: u32,
-//     after_cursor: Option<Vec<u8>>,
-// ) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+#[wasm_bindgen]
+pub async fn get_transactions(
+    search_key: JsValue,
+    order: Order,
+    limit: u32,
+    after_cursor: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
 
-// #[wasm_bindgen]
-// pub fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+    let search_key: SearchKey = serde_wasm_bindgen::from_value(search_key)?;
+    let (prefix, from_key, direction, skip) = build_query_options(
+        &search_key,
+        KeyPrefix::TxLockScript,
+        KeyPrefix::TxTypeScript,
+        order,
+        after_cursor.map(JsonBytes::from_vec),
+    )?;
+    let limit = limit as usize;
+    if limit == 0 {
+        return Err(JsValue::from_str("limit should be greater than 0"));
+    }
 
-// #[wasm_bindgen]
-// pub fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
-//     Ok(Vec::new())
-// }
+    let (filter_script, filter_block_range) = if let Some(filter) = search_key.filter.as_ref() {
+        if filter.output_data_len_range.is_some() {
+            return Err(JsValue::from_str(
+                "doesn't support search_key.filter.output_data_len_range parameter",
+            ));
+        }
+        if filter.output_capacity_range.is_some() {
+            return Err(JsValue::from_str(
+                "doesn't support search_key.filter.output_capacity_range parameter",
+            ));
+        }
+        let filter_script: Option<packed::Script> =
+            filter.script.as_ref().map(|script| script.clone().into());
+        let filter_block_range: Option<[core::BlockNumber; 2]> =
+            filter.block_range.map(|r| [r[0].into(), r[1].into()]);
+        (filter_script, filter_block_range)
+    } else {
+        (None, None)
+    };
 
-// #[wasm_bindgen]
-// pub fn get_transaction(hash: &[u8]) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+    let filter_script_type = match search_key.script_type {
+        ScriptType::Lock => ScriptType::Type,
+        ScriptType::Type => ScriptType::Lock,
+    };
 
-// #[wasm_bindgen]
-// pub fn fetch_transaction(hash: &[u8]) -> Result<JsValue, JsValue> {
-//     Ok(JsValue::null())
-// }
+    let storage = STORAGE_WITH_DATA.get().unwrap().storage();
+
+    let kvs: Vec<_> = storage
+        .collect_iterator(
+            from_key,
+            direction,
+            Box::new(move |key| key.starts_with(&prefix)),
+            limit,
+            skip,
+        )
+        .await;
+    if search_key.group_by_transaction.unwrap_or_default() {
+        let mut tx_with_cells: Vec<TxWithCells> = Vec::new();
+        let mut last_key = Vec::new();
+
+        for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
+            let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
+            if tx_with_cells.len() == limit
+                && tx_with_cells.last_mut().unwrap().transaction.hash != tx_hash.unpack()
+            {
+                break;
+            }
+            last_key = key.to_vec();
+            let tx = packed::Transaction::from_slice(
+                &storage
+                    .get(Key::TxHash(&tx_hash).into_vec())
+                    .await
+                    .expect("get tx should be OK")
+                    .expect("stored tx")[12..],
+            )
+            .expect("from stored tx slice should be OK");
+
+            let block_number = u64::from_be_bytes(
+                key[key.len() - 17..key.len() - 9]
+                    .try_into()
+                    .expect("stored block_number"),
+            );
+            let tx_index = u32::from_be_bytes(
+                key[key.len() - 9..key.len() - 5]
+                    .try_into()
+                    .expect("stored tx_index"),
+            );
+            let io_index = u32::from_be_bytes(
+                key[key.len() - 5..key.len() - 1]
+                    .try_into()
+                    .expect("stored io_index"),
+            );
+            let io_type = if *key.last().expect("stored io_type") == 0 {
+                CellType::Input
+            } else {
+                CellType::Output
+            };
+
+            if let Some(filter_script) = filter_script.as_ref() {
+                let filter_script_matched = match filter_script_type {
+                    ScriptType::Lock => storage
+                        .get(
+                            Key::TxLockScript(
+                                filter_script,
+                                block_number,
+                                tx_index,
+                                io_index,
+                                match io_type {
+                                    CellType::Input => storage::CellType::Input,
+                                    CellType::Output => storage::CellType::Output,
+                                },
+                            )
+                            .into_vec(),
+                        )
+                        .await
+                        .expect("get TxLockScript should be OK")
+                        .is_some(),
+                    ScriptType::Type => storage
+                        .get(
+                            Key::TxTypeScript(
+                                filter_script,
+                                block_number,
+                                tx_index,
+                                io_index,
+                                match io_type {
+                                    CellType::Input => storage::CellType::Input,
+                                    CellType::Output => storage::CellType::Output,
+                                },
+                            )
+                            .into_vec(),
+                        )
+                        .await
+                        .expect("get TxTypeScript should be OK")
+                        .is_some(),
+                };
+
+                if !filter_script_matched {
+                    continue;
+                }
+            }
+
+            if let Some([r0, r1]) = filter_block_range {
+                if block_number < r0 || block_number >= r1 {
+                    continue;
+                }
+            }
+
+            let last_tx_hash_is_same = tx_with_cells
+                .last_mut()
+                .map(|last| {
+                    if last.transaction.hash == tx_hash.unpack() {
+                        last.cells.push((io_type.clone(), io_index.into()));
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or_default();
+
+            if !last_tx_hash_is_same {
+                tx_with_cells.push(TxWithCells {
+                    transaction: tx.into_view().into(),
+                    block_number: block_number.into(),
+                    tx_index: tx_index.into(),
+                    cells: vec![(io_type, io_index.into())],
+                });
+            }
+        }
+
+        Ok(serde_wasm_bindgen::to_value(&Pagination {
+            objects: tx_with_cells.into_iter().map(Tx::Grouped).collect(),
+            last_cursor: JsonBytes::from_vec(last_key),
+        })?)
+    } else {
+        let mut last_key = Vec::new();
+        let mut txs = Vec::new();
+        for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
+            let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
+            let tx = packed::Transaction::from_slice(
+                &storage
+                    .get(Key::TxHash(&tx_hash).into_vec())
+                    .await
+                    .expect("get tx should be OK")
+                    .expect("stored tx")[12..],
+            )
+            .expect("from stored tx slice should be OK");
+
+            let block_number = u64::from_be_bytes(
+                key[key.len() - 17..key.len() - 9]
+                    .try_into()
+                    .expect("stored block_number"),
+            );
+            let tx_index = u32::from_be_bytes(
+                key[key.len() - 9..key.len() - 5]
+                    .try_into()
+                    .expect("stored tx_index"),
+            );
+            let io_index = u32::from_be_bytes(
+                key[key.len() - 5..key.len() - 1]
+                    .try_into()
+                    .expect("stored io_index"),
+            );
+            let io_type = if *key.last().expect("stored io_type") == 0 {
+                CellType::Input
+            } else {
+                CellType::Output
+            };
+
+            if let Some(filter_script) = filter_script.as_ref() {
+                match filter_script_type {
+                    ScriptType::Lock => {
+                        if storage
+                            .get(
+                                Key::TxLockScript(
+                                    filter_script,
+                                    block_number,
+                                    tx_index,
+                                    io_index,
+                                    match io_type {
+                                        CellType::Input => storage::CellType::Input,
+                                        CellType::Output => storage::CellType::Output,
+                                    },
+                                )
+                                .into_vec(),
+                            )
+                            .await
+                            .expect("get TxLockScript should be OK")
+                            .is_none()
+                        {
+                            continue;
+                        };
+                    }
+                    ScriptType::Type => {
+                        if storage
+                            .get(
+                                Key::TxTypeScript(
+                                    filter_script,
+                                    block_number,
+                                    tx_index,
+                                    io_index,
+                                    match io_type {
+                                        CellType::Input => storage::CellType::Input,
+                                        CellType::Output => storage::CellType::Output,
+                                    },
+                                )
+                                .into_vec(),
+                            )
+                            .await
+                            .expect("get TxTypeScript should be OK")
+                            .is_none()
+                        {
+                            continue;
+                        };
+                    }
+                }
+            }
+
+            if let Some([r0, r1]) = filter_block_range {
+                if block_number < r0 || block_number >= r1 {
+                    continue;
+                }
+            }
+
+            last_key = key.to_vec();
+            txs.push(Tx::Ungrouped(TxWithCell {
+                transaction: tx.into_view().into(),
+                block_number: block_number.into(),
+                tx_index: tx_index.into(),
+                io_index: io_index.into(),
+                io_type,
+            }))
+        }
+
+        Ok(serde_wasm_bindgen::to_value(&Pagination {
+            objects: txs,
+            last_cursor: JsonBytes::from_vec(last_key),
+        })?)
+    }
+}
+
+#[wasm_bindgen]
+pub async fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+
+    let search_key: SearchKey = serde_wasm_bindgen::from_value(search_key)?;
+    let (prefix, from_key, direction, skip) = build_query_options(
+        &search_key,
+        KeyPrefix::CellLockScript,
+        KeyPrefix::CellTypeScript,
+        Order::Asc,
+        None,
+    )?;
+    let filter_script_type = match search_key.script_type {
+        ScriptType::Lock => ScriptType::Type,
+        ScriptType::Type => ScriptType::Lock,
+    };
+    let (
+        filter_prefix,
+        filter_script_len_range,
+        filter_output_data_len_range,
+        filter_output_capacity_range,
+        filter_block_range,
+    ) = build_filter_options(search_key)?;
+
+    let storage = STORAGE_WITH_DATA.get().unwrap().storage();
+    let kvs: Vec<_> = storage
+        .collect_iterator(
+            from_key,
+            direction,
+            Box::new(move |key| key.starts_with(&prefix)),
+            usize::MAX,
+            skip,
+        )
+        .await;
+
+    let mut capacity = 0;
+    for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
+        let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
+        let output_index = u32::from_be_bytes(
+            key[key.len() - 4..]
+                .try_into()
+                .expect("stored output_index"),
+        );
+        let block_number = u64::from_be_bytes(
+            key[key.len() - 16..key.len() - 8]
+                .try_into()
+                .expect("stored block_number"),
+        );
+
+        let tx = packed::Transaction::from_slice(
+            &storage
+                .get(Key::TxHash(&tx_hash).into_vec())
+                .await
+                .expect("get tx should be OK")
+                .expect("stored tx")[12..],
+        )
+        .expect("from stored tx slice should be OK");
+        let output = tx
+            .raw()
+            .outputs()
+            .get(output_index as usize)
+            .expect("get output by index should be OK");
+        let output_data = tx
+            .raw()
+            .outputs_data()
+            .get(output_index as usize)
+            .expect("get output data by index should be OK");
+
+        if let Some(prefix) = filter_prefix.as_ref() {
+            match filter_script_type {
+                ScriptType::Lock => {
+                    if !extract_raw_data(&output.lock())
+                        .as_slice()
+                        .starts_with(prefix)
+                    {
+                        continue;
+                    }
+                }
+                ScriptType::Type => {
+                    if output.type_().is_none()
+                        || !extract_raw_data(&output.type_().to_opt().unwrap())
+                            .as_slice()
+                            .starts_with(prefix)
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if let Some([r0, r1]) = filter_script_len_range {
+            match filter_script_type {
+                ScriptType::Lock => {
+                    let script_len = extract_raw_data(&output.lock()).len();
+                    if script_len < r0 || script_len > r1 {
+                        continue;
+                    }
+                }
+                ScriptType::Type => {
+                    let script_len = output
+                        .type_()
+                        .to_opt()
+                        .map(|script| extract_raw_data(&script).len())
+                        .unwrap_or_default();
+                    if script_len < r0 || script_len > r1 {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if let Some([r0, r1]) = filter_output_data_len_range {
+            if output_data.len() < r0 || output_data.len() >= r1 {
+                continue;
+            }
+        }
+
+        if let Some([r0, r1]) = filter_output_capacity_range {
+            let capacity: core::Capacity = output.capacity().unpack();
+            if capacity < r0 || capacity >= r1 {
+                continue;
+            }
+        }
+
+        if let Some([r0, r1]) = filter_block_range {
+            if block_number < r0 || block_number >= r1 {
+                continue;
+            }
+        }
+
+        capacity += Unpack::<core::Capacity>::unpack(&output.capacity()).as_u64()
+    }
+
+    let key = Key::Meta(LAST_STATE_KEY).into_vec();
+    let tip_header = storage
+        .get(key)
+        .await
+        .expect("snapshot get last state should be ok")
+        .map(|data| packed::HeaderReader::from_slice_should_be_ok(&data[32..]).to_entity())
+        .expect("tip header should be inited");
+    Ok(serde_wasm_bindgen::to_value(&CellsCapacity {
+        capacity: capacity.into(),
+        block_hash: tip_header.calc_header_hash().unpack(),
+        block_number: tip_header.raw().number().unpack(),
+    })?)
+}
+
+#[wasm_bindgen]
+pub async fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+    let tx: Transaction = serde_wasm_bindgen::from_value(tx)?;
+    let tx: packed::Transaction = tx.into();
+    let tx = tx.into_view();
+
+    let swc = STORAGE_WITH_DATA.get().unwrap();
+    let tmpdb = generate_temporary_db(swc, tx.clone())
+        .await
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let consensus = CONSENSUS.get().unwrap();
+
+    let cycles = verify_tx(
+        tx.clone(),
+        &tmpdb,
+        Arc::clone(consensus),
+        &swc.storage().get_last_state_async().await.1.into_view(),
+    )
+    .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
+    swc.pending_txs()
+        .write()
+        .expect("pending_txs lock is poisoned")
+        .push(tx.clone(), cycles);
+
+    Ok(Unpack::<H256>::unpack(&tx.hash()).0.to_vec())
+}
+
+#[wasm_bindgen]
+pub async fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+    let tx_hash = H256::from_slice(&tx_hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let swc = STORAGE_WITH_DATA.get().unwrap();
+
+    if let Some((transaction, header)) = swc
+        .storage()
+        .get_transaction_with_header(&tx_hash.pack())
+        .await
+    {
+        return Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
+            transaction: Some(transaction.into_view().into()),
+            cycles: None,
+            tx_status: TxStatus {
+                block_hash: Some(header.into_view().hash().unpack()),
+                status: Status::Committed,
+            },
+        })?);
+    }
+
+    if let Some((transaction, cycles, _)) = swc
+        .pending_txs()
+        .read()
+        .expect("pending_txs lock is poisoned")
+        .get(&tx_hash.pack())
+    {
+        return Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
+            transaction: Some(transaction.into_view().into()),
+            cycles: Some(cycles.into()),
+            tx_status: TxStatus {
+                block_hash: None,
+                status: Status::Pending,
+            },
+        })?);
+    }
+
+    Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
+        transaction: None,
+        cycles: None,
+        tx_status: TxStatus {
+            block_hash: None,
+            status: Status::Unknown,
+        },
+    })?)
+}
+
+#[wasm_bindgen]
+pub async fn fetch_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
+    if !status(0b1) {
+        return Err(JsValue::from_str("light client not on start state"));
+    }
+
+    let tws = get_transaction(tx_hash.clone()).await?;
+    let tws: TransactionWithStatus = serde_wasm_bindgen::from_value(tws)?;
+    if tws.transaction.is_some() {
+        return Ok(serde_wasm_bindgen::to_value(&FetchStatus::Fetched {
+            data: tws,
+        })?);
+    }
+    let tx_hash = H256::from_slice(&tx_hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let swc = STORAGE_WITH_DATA.get().unwrap();
+
+    let now = unix_time_as_millis();
+    if let Some((added_ts, first_sent, missing)) = swc.get_tx_fetch_info(&tx_hash) {
+        if missing {
+            // re-fetch the transaction
+            swc.add_fetch_tx(tx_hash, now);
+            return Ok(serde_wasm_bindgen::to_value(
+                &FetchStatus::<TransactionWithStatus>::NotFound,
+            )?);
+        } else if first_sent > 0 {
+            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+                TransactionWithStatus,
+            >::Fetching {
+                first_sent: first_sent.into(),
+            })?);
+        } else {
+            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+                TransactionWithStatus,
+            >::Added {
+                timestamp: added_ts.into(),
+            })?);
+        }
+    } else {
+        swc.add_fetch_tx(tx_hash, now);
+    }
+    Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
+        TransactionWithStatus,
+    >::Added {
+        timestamp: now.into(),
+    })?)
+}
 
 const MAX_PREFIX_SEARCH_SIZE: usize = u16::max_value() as usize;
 
@@ -557,7 +1277,7 @@ pub fn build_query_options(
     type_prefix: KeyPrefix,
     order: Order,
     after_cursor: Option<JsonBytes>,
-) -> Result<(Vec<u8>, Vec<u8>, Direction, usize), JsValue> {
+) -> Result<(Vec<u8>, Vec<u8>, CursorDirection, usize), JsValue> {
     let mut prefix = match search_key.script_type {
         ScriptType::Lock => vec![lock_prefix as u8],
         ScriptType::Type => vec![type_prefix as u8],
@@ -574,8 +1294,8 @@ pub fn build_query_options(
 
     let (from_key, direction, skip) = match order {
         Order::Asc => after_cursor.map_or_else(
-            || (prefix.clone(), Direction::Forward, 0),
-            |json_bytes| (json_bytes.as_bytes().into(), Direction::Forward, 1),
+            || (prefix.clone(), CursorDirection::NextUnique, 0),
+            |json_bytes| (json_bytes.as_bytes().into(), CursorDirection::NextUnique, 1),
         ),
         Order::Desc => after_cursor.map_or_else(
             || {
@@ -585,11 +1305,11 @@ pub fn build_query_options(
                         vec![0xff; MAX_PREFIX_SEARCH_SIZE - args_len],
                     ]
                     .concat(),
-                    Direction::Reverse,
+                    CursorDirection::PrevUnique,
                     0,
                 )
             },
-            |json_bytes| (json_bytes.as_bytes().into(), Direction::Reverse, 1),
+            |json_bytes| (json_bytes.as_bytes().into(), CursorDirection::PrevUnique, 1),
         ),
     };
 
@@ -653,285 +1373,4 @@ pub fn build_filter_options(
         filter_output_capacity_range,
         filter_block_range,
     ))
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-struct KV {
-    key: Vec<u8>,
-    value: Vec<u8>,
-}
-
-#[wasm_bindgen]
-pub fn test_serde() -> JsValue {
-    serde_wasm_bindgen::to_value(&vec![
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 35, 13, 4, 133, 109, 29, 198, 7, 44, 187, 194, 92, 245, 171, 181, 45, 84,
-        19, 215, 216, 155, 25, 199, 70, 207, 158, 191, 19, 246, 151, 180, 1, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 67,
-        69, 115, 55, 53, 161, 46, 0, 0, 193, 111, 242, 134, 35, 0, 186, 115, 227, 224, 148, 5, 0,
-        0, 0, 153, 245, 75, 1, 251, 254, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ])
-    .unwrap()
-}
-
-#[wasm_bindgen]
-pub async fn test_idb() {
-    use idb::{
-        DatabaseEvent, Factory, IndexParams, KeyPath, KeyRange, ObjectStoreParams, Request,
-        TransactionMode, TransactionResult,
-    };
-
-    utils::set_panic_hook();
-    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
-
-    let factory = Factory::new().unwrap();
-    // factory.delete("test").unwrap().await.unwrap();
-
-    let mut open_request = factory.open("ckb-light-client", Some(1)).unwrap();
-    open_request.on_upgrade_needed(|event| {
-        let database = event.database().unwrap();
-        let store_params = ObjectStoreParams::new();
-        // store_params.auto_increment(true);
-        // store_params.key_path(Some(KeyPath::new_single("id")));
-
-        let store = database
-            .create_object_store("data/store", store_params)
-            .unwrap();
-        let mut index_params = IndexParams::new();
-        index_params.unique(true);
-        store
-            .create_index("key", KeyPath::new_single("key"), Some(index_params))
-            .unwrap();
-    });
-
-    let db = Arc::new(open_request.await.unwrap());
-
-    log::info!("{:?}", db);
-
-    let db_clone = db.clone();
-
-    // let count = index.count(None).unwrap().await;
-    // assert_eq!(count, Ok(4), "count should be 4: {count:?}");
-    log::info!("1");
-
-    let (tx, rx) = futures::channel::oneshot::channel();
-    wasm_bindgen_futures::spawn_local(async move {
-        let transaction = db_clone
-            .transaction(&["data/store"], TransactionMode::ReadWrite)
-            .unwrap();
-        let store = transaction.object_store("data/store").unwrap();
-        store
-            .put(
-                &serde_wasm_bindgen::to_value(&KV {
-                    key: vec![224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69],
-                    value: vec![
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        133, 109, 29, 198, 7, 44, 187, 194, 92, 245, 171, 181, 45, 84, 19, 215,
-                        216, 155, 25, 199, 70, 207, 158, 191, 19, 246, 151, 180, 1, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 67, 69, 115, 55, 53, 161, 46, 0, 0, 193,
-                        111, 242, 134, 35, 0, 186, 115, 227, 224, 148, 5, 0, 0, 0, 153, 245, 75, 1,
-                        251, 254, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    ],
-                })
-                .unwrap(),
-                Some(
-                    &serde_wasm_bindgen::to_value(&vec![
-                        224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69,
-                    ])
-                    .unwrap(),
-                ),
-            )
-            .unwrap()
-            .await
-            .unwrap();
-        assert_eq!(
-            idb::TransactionResult::Committed,
-            transaction.commit().unwrap().await.unwrap()
-        );
-        tx.send(()).unwrap();
-    });
-
-    rx.await.unwrap();
-    let (tx, rx) = futures::channel::oneshot::channel();
-    let db_clone = db.clone();
-    wasm_bindgen_futures::spawn_local(async move {
-        let transaction = db_clone
-            .transaction(&["data/store"], TransactionMode::ReadWrite)
-            .unwrap();
-        let store = transaction.object_store("data/store").unwrap();
-        store
-            .put(
-                &serde_wasm_bindgen::to_value(&KV {
-                    key: vec![224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69],
-                    value: vec![
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 13, 4,
-                        133, 109, 29, 198, 7, 44, 187, 194, 92, 245, 171, 181, 45, 84, 19, 215,
-                        216, 155, 25, 199, 70, 207, 158, 191, 19, 246, 151, 180, 1, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 67, 69, 115, 55, 53, 161, 46, 0, 0, 193,
-                        111, 242, 134, 35, 0, 186, 115, 227, 224, 148, 5, 0, 0, 0, 153, 245, 75, 1,
-                        251, 254, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                    ],
-                })
-                .unwrap(),
-                Some(
-                    &serde_wasm_bindgen::to_value(&vec![
-                        224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69,
-                    ])
-                    .unwrap(),
-                ),
-            )
-            .unwrap()
-            .await
-            .unwrap();
-        assert_eq!(
-            idb::TransactionResult::Committed,
-            transaction.commit().unwrap().await.unwrap()
-        );
-        tx.send(()).unwrap()
-    });
-
-    rx.await.unwrap();
-
-    let transaction = db
-        .transaction(&["data/store"], TransactionMode::ReadWrite)
-        .unwrap();
-    let store = transaction.object_store("data/store").unwrap();
-
-    let index = store.index("key").unwrap();
-
-    let stored_0 = index
-        .get(
-            serde_wasm_bindgen::to_value(&vec![224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69])
-                .unwrap(),
-        )
-        .unwrap()
-        .await;
-    log::info!("{:?}", stored_0);
-    let start_key = Key::CheckPointIndex(0).into_vec();
-    //  [224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 13, 4, 133, 109, 29, 198, 7, 44, 187, 194, 92, 245, 171, 181, 45, 84, 19, 215, 216, 155, 25, 199, 70, 207, 158, 191, 19, 246, 151, 180, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 67, 69, 115, 55, 53, 161, 46, 0, 0, 193, 111, 242, 134, 35, 0, 186, 115, 227, 224, 148, 5, 0, 0, 0, 153, 245, 75, 1, 251, 254, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    // [0, 0, 0, 0, 0, 0, 1, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 13, 4, 133, 109, 29, 198, 7, 44, 187, 194, 92, 245, 171, 181, 45, 84, 19, 215, 216, 155, 25, 199, 70, 207, 158, 191, 19, 246, 151, 180, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 67, 69, 115, 55, 53, 161, 46, 0, 0, 193, 111, 242, 134, 35, 0, 186, 115, 227, 224, 148, 5, 0, 0, 0, 153, 245, 75, 1, 251, 254, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    log::info!("{:?}", start_key);
-    let key_prefix = [KeyPrefix::CheckPointIndex as u8];
-    let mut cursor = index
-        .open_cursor(
-            Some(
-                KeyRange::lower_bound(
-                    &serde_wasm_bindgen::to_value(&start_key).unwrap(),
-                    Some(false),
-                )
-                .unwrap()
-                .into(),
-            ),
-            Some(idb::CursorDirection::NextUnique),
-        )
-        .unwrap()
-        .await
-        .unwrap()
-        .unwrap()
-        .into_managed();
-    log::info!(
-        "{:?}, {:?}",
-        cursor.key().unwrap(),
-        serde_wasm_bindgen::from_value::<KV>(cursor.value().unwrap().unwrap()).unwrap()
-    );
-    while let Ok(_) = cursor.next(None).await {
-        if cursor.key().is_err() {
-            break;
-        }
-        let key = cursor.key().unwrap();
-        if key.is_none() {
-            log::info!("finished");
-            break;
-        }
-        log::info!(
-            "{:?}, {:?}",
-            key,
-            serde_wasm_bindgen::from_value::<KV>(cursor.value().unwrap().unwrap()).unwrap()
-        );
-    }
-}
-
-#[wasm_bindgen]
-pub async fn test_indexed_db() {
-    use anyhow::Context;
-    use indexed_db::Factory;
-
-    utils::set_panic_hook();
-    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
-
-    let factory = Factory::<std::io::Error>::get()
-        .context("opening IndexedDB")
-        .unwrap();
-
-    let db = factory
-        .open("ckb-light-client", 1, |evt| async move {
-            let db = evt.database();
-            let store = db
-                .build_object_store("data/store")
-                .auto_increment()
-                .create()?;
-            store.build_index("key", "key").unique().create().unwrap();
-
-            Ok(())
-        })
-        .await
-        .context("creating the 'database' IndexedDB")
-        .unwrap();
-
-    db.transaction(&["data/store"])
-        .rw()
-        .run(|t| async move {
-            let store = t.object_store("data/store")?;
-            store
-                .put_kv(
-                    &serde_wasm_bindgen::to_value(&vec![
-                        224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69,
-                    ])
-                    .unwrap(),
-                    &serde_wasm_bindgen::to_value(&KV {
-                        key: vec![224, 76, 65, 83, 84, 95, 83, 84, 65, 84, 69],
-                        value: vec![
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 32, 0, 0, 0, 0, 0, 0, 0,
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            0, 0, 0, 0, 133, 109, 29, 198, 7, 44, 187, 194, 92, 245, 171, 181, 45,
-                            84, 19, 215, 216, 155, 25, 199, 70, 207, 158, 191, 19, 246, 151, 180,
-                            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 67, 69, 115, 55,
-                            53, 161, 46, 0, 0, 193, 111, 242, 134, 35, 0, 186, 115, 227, 224, 148,
-                            5, 0, 0, 0, 153, 245, 75, 1, 251, 254, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                            0, 0, 0, 0, 0, 0,
-                        ],
-                    })
-                    .unwrap(),
-                )
-                .await
-                .unwrap();
-            log::info!("2");
-            Ok(())
-        })
-        .await
-        .unwrap();
-
-    db.transaction(&["data/store"])
-        .run(|t| async move {
-            let data = t.object_store("data/store")?.get_all(None).await.unwrap();
-            log::info!("data len: {}", data.len());
-            Ok(())
-        })
-        .await;
-    log::info!("1");
 }

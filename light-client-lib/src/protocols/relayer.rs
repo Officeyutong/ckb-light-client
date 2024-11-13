@@ -125,8 +125,14 @@ impl CKBProtocolHandler for RelayProtocol {
 
         let epoch = match prove_state_epoch {
             Some(proved) => {
-                let stored: EpochNumberWithFraction =
-                    self.storage.get_last_state().1.raw().epoch().unpack();
+                let stored: EpochNumberWithFraction = self
+                    .storage
+                    .get_last_state_async()
+                    .await
+                    .1
+                    .raw()
+                    .epoch()
+                    .unpack();
                 if stored > proved {
                     trace!("RelayProtocol.connected peer={} got a stale epoch, ignore and close the protocol", peer);
                     close_protocol(&nc, peer);

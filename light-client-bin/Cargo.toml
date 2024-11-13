@@ -9,15 +9,15 @@ homepage = "https://github.com/nervosnetwork/ckb-light-client"
 repository = "https://github.com/nervosnetwork/ckb-light-client"
 
 [dependencies]
-ckb-async-runtime = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-async-runtime = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
 
 ckb-light-client-lib = { path = "../light-client-lib" }
 clap = { version = "4", features = ["cargo"] }

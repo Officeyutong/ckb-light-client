@@ -9,23 +9,8 @@ import {
   get_scripts,
   Order,
   stop,
-  test_idb,
-  test_serde,
-  test_indexed_db,
 } from "./pkg";
 debugger;
-// await test_idb();
-// await test_indexed_db();
-// console.log(test_serde());
-// console.log("start 13");
-// ckb_vm_test("13");
-// console.log("end 13");
-
-// setTimeout(() => {
-//   console.log("start 12");
-//   ckb_vm_test("12");
-//   console.log("end 12");
-// }, 2000);
 
 await ligth_client("dev");
 

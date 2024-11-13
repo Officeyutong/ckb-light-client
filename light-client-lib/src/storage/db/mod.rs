@@ -4,10 +4,6 @@ mod native;
 pub use native::{Batch, Storage};
 
 #[cfg(target_arch = "wasm32")]
-mod browser_test;
+mod browser;
 #[cfg(target_arch = "wasm32")]
-pub use browser_test::{Batch, Direction, Storage};
-// #[cfg(target_arch = "wasm32")]
-// mod browser;
-// #[cfg(target_arch = "wasm32")]
-// pub use browser::{collect_iterator, Batch, CursorDirection, Storage};
+pub use browser::{Batch, CursorDirection, Storage};

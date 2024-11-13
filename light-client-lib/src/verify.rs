@@ -180,7 +180,7 @@ where
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn generate_temporary_db(
+pub async fn generate_temporary_db(
     swc: &StorageWithChainData,
     transaction: TransactionView,
 ) -> Result<TmpDB, OutPointError> {

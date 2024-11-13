@@ -21,18 +21,15 @@ wasm-bindgen-futures = "0.4"
 log = "0.4"
 wasm-logger = "0.2"
 serde-wasm-bindgen = "0.6.5"
-idb = "0.6"
-indexed-db = "0.4"
-futures = "0.3"
-anyhow = "1"
 
-ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-async-runtime = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
-ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "879ab46" }
+ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-async-runtime = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
 
 getrandom = { version = "0.2", features = ["js"] }
 

@@ -4,10 +4,12 @@ use std::{collections::HashMap, sync::Arc};
 use ckb_traits::{
     CellDataProvider, ExtensionProvider, HeaderFields, HeaderFieldsProvider, HeaderProvider,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use ckb_types::core::cell::CellMeta;
 use ckb_types::{
     bytes::Bytes,
     core::{
-        cell::{CellMeta, CellProvider, CellStatus},
+        cell::{CellProvider, CellStatus},
         BlockNumber, BlockView, HeaderView,
     },
     packed::{self, Byte32, CellOutput, Header, OutPoint, Script, Transaction},
@@ -19,7 +21,7 @@ use ckb_types::{
 mod db;
 
 #[cfg(target_arch = "wasm32")]
-pub use db::{Batch, Direction, Storage};
+pub use db::{Batch, CursorDirection, Storage};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use db::{Batch, Storage};
@@ -121,6 +123,10 @@ impl StorageWithChainData {
         &self.storage
     }
 
+    pub fn peers(&self) -> &Arc<Peers> {
+        &self.peers
+    }
+
     pub fn pending_txs(&self) -> &RwLock<PendingTxs> {
         &self.pending_txs
     }
@@ -144,6 +150,7 @@ impl StorageWithChainData {
     }
 }
 
+#[derive(Clone)]
 pub struct TmpDB {
     pub(crate) cells: HashMap<OutPoint, CellStatus>,
     pub(crate) headers: HashMap<Byte32, HeaderView>,
