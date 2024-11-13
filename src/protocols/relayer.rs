@@ -7,7 +7,6 @@ use ckb_types::core::{Cycle, EpochNumberWithFraction, TransactionView};
 use ckb_types::{packed, prelude::*};
 use linked_hash_map::LinkedHashMap;
 use log::{debug, trace, warn};
-use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
