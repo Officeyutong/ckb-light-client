@@ -320,16 +320,14 @@ impl LightClientProtocol {
         peer_index: PeerIndex,
         new_prove_state: ProveState,
     ) -> Result<(), Status> {
-        let (old_total_difficulty, _) = self.storage.get_last_state_async().await;
+        let (old_total_difficulty, _) = self.storage.get_last_state();
         let new_total_difficulty = new_prove_state.get_last_header().total_difficulty();
         if new_total_difficulty > old_total_difficulty {
-            self.storage
-                .update_last_state_async(
-                    &new_total_difficulty,
-                    &new_prove_state.get_last_header().header().data(),
-                    new_prove_state.get_last_headers(),
-                )
-                .await;
+            self.storage.update_last_state(
+                &new_total_difficulty,
+                &new_prove_state.get_last_header().header().data(),
+                new_prove_state.get_last_headers(),
+            );
         }
         self.peers().update_prove_state(peer_index, new_prove_state)
     }
@@ -342,7 +340,7 @@ impl LightClientProtocol {
         peer_index: PeerIndex,
         new_prove_state: ProveState,
     ) -> Result<bool, Status> {
-        let (old_total_difficulty, prev_last_header) = self.storage.get_last_state_async().await;
+        let (old_total_difficulty, prev_last_header) = self.storage.get_last_state();
         let new_total_difficulty = new_prove_state.get_last_header().total_difficulty();
         if new_total_difficulty > old_total_difficulty {
             let reorg_last_headers = new_prove_state.get_reorg_last_headers();
@@ -354,24 +352,19 @@ impl LightClientProtocol {
                 if prev_last_header_number == 1 {
                     info!("rollback to block#1 since previous last header number is 1");
 
-                    while let Some((start_number, _, _)) =
-                        self.storage.get_latest_matched_blocks_async().await
+                    while let Some((start_number, _, _)) = self.storage.get_latest_matched_blocks()
                     {
                         if start_number > 0 {
-                            self.storage.remove_matched_blocks_async(start_number).await;
+                            self.storage.remove_matched_blocks(start_number);
                         }
                     }
-                    self.storage.rollback_to_block_async(1).await;
+                    self.storage.rollback_to_block(1);
                     let mut matched_blocks = self.peers.matched_blocks().write().expect("poisoned");
                     matched_blocks.clear();
                 }
             } else {
-                let old_last_headers: HashMap<_, _> = self
-                    .storage
-                    .get_last_n_headers_async()
-                    .await
-                    .into_iter()
-                    .collect();
+                let old_last_headers: HashMap<_, _> =
+                    self.storage.get_last_n_headers().into_iter().collect();
                 let fork_number = reorg_last_headers.iter().rev().find_map(|reorg_header| {
                     let number = reorg_header.number();
                     old_last_headers
@@ -388,12 +381,11 @@ impl LightClientProtocol {
                 if let Some(to_number) = fork_number {
                     debug!("fork to number: {}", to_number);
                     let mut start_number_opt = None;
-                    while let Some((start_number, _, _)) =
-                        self.storage.get_latest_matched_blocks_async().await
+                    while let Some((start_number, _, _)) = self.storage.get_latest_matched_blocks()
                     {
                         if start_number > to_number {
                             debug!("remove matched blocks start from: {}", start_number);
-                            self.storage.remove_matched_blocks_async(start_number).await;
+                            self.storage.remove_matched_blocks(start_number);
                         } else {
                             start_number_opt = Some(start_number);
                             break;
@@ -401,7 +393,7 @@ impl LightClientProtocol {
                     }
                     let rollback_to = start_number_opt.unwrap_or(to_number) + 1;
                     info!("rollback to block#{}", rollback_to);
-                    self.storage.rollback_to_block_async(rollback_to).await;
+                    self.storage.rollback_to_block(rollback_to);
                     let mut matched_blocks = self.peers.matched_blocks().write().expect("poisoned");
                     matched_blocks.clear();
                 } else {
@@ -410,13 +402,11 @@ impl LightClientProtocol {
                 }
             }
 
-            self.storage
-                .update_last_state_async(
-                    &new_total_difficulty,
-                    &new_prove_state.get_last_header().header().data(),
-                    new_prove_state.get_last_headers(),
-                )
-                .await;
+            self.storage.update_last_state(
+                &new_total_difficulty,
+                &new_prove_state.get_last_header().header().data(),
+                new_prove_state.get_last_headers(),
+            );
         }
         self.peers()
             .update_prove_state(peer_index, new_prove_state)?;
@@ -571,7 +561,7 @@ impl LightClientProtocol {
             required_peers_count,
             peers_with_data.len()
         );
-        let (last_cpindex, last_check_point) = self.storage.get_last_check_point_async().await;
+        let (last_cpindex, last_check_point) = self.storage.get_last_check_point();
         trace!(
             "finalized check point is {}, {:#x}",
             last_cpindex,
@@ -698,18 +688,15 @@ impl LightClientProtocol {
             );
             let (_, check_points) = peers_with_data.into_values().next().expect("always exists");
             self.storage
-                .update_check_points_async(last_cpindex + 1, &check_points[1..=index])
-                .await;
-            self.storage
-                .update_max_check_point_index_async(new_last_cpindex)
-                .await;
+                .update_check_points(last_cpindex + 1, &check_points[1..=index]);
+            self.storage.update_max_check_point_index(new_last_cpindex);
         } else {
             trace!("no check point is found which could be finalized");
         }
     }
 
     async fn get_idle_blocks(&mut self, nc: &BoxedCKBProtocolContext) {
-        let tip_header = self.storage.get_tip_header_async().await;
+        let tip_header = self.storage.get_tip_header();
         let matched_blocks = self.peers.matched_blocks().read().expect("poisoned");
         prove_or_download_matched_blocks(
             Arc::clone(&self.peers),
@@ -726,7 +713,7 @@ impl LightClientProtocol {
             return;
         }
 
-        let tip_header = self.storage.get_tip_header_async().await;
+        let tip_header = self.storage.get_tip_header();
         let best_peers: Vec<PeerIndex> = self.peers.get_best_proved_peers(&tip_header);
         if best_peers.is_empty() {
             debug!("no peers found for fetch headers and transactions");
@@ -836,7 +823,7 @@ impl LightClientProtocol {
                     (start_hash, start_number, start_total_difficulty)
                 }
                 None => {
-                    let (total_difficulty, last_tip) = self.storage.get_last_state_async().await;
+                    let (total_difficulty, last_tip) = self.storage.get_last_state();
                     if total_difficulty > last_total_difficulty {
                         warn!(
                             "total difficulty ({:#x}) in storage is greater than \
@@ -863,7 +850,7 @@ impl LightClientProtocol {
             .last_hash(last_header.header().hash())
             .last_n_blocks(last_n_blocks.pack());
         let content = if last_number - start_number <= last_n_blocks {
-            let last_n_headers = self.storage.get_last_n_headers_async().await;
+            let last_n_headers = self.storage.get_last_n_headers();
 
             let (real_start_number, real_start_hash) = last_n_headers
                 .into_iter()
@@ -900,7 +887,7 @@ impl LightClientProtocol {
         let last_number = last_header.header().number();
         let last_total_difficulty = last_header.total_difficulty();
         let (start_hash, start_number, start_total_difficulty) = {
-            let genesis = self.storage.get_genesis_block_async().await;
+            let genesis = self.storage.get_genesis_block();
             (genesis.calc_header_hash(), 0, U256::zero())
         };
         if start_total_difficulty > last_total_difficulty || start_number >= last_number {

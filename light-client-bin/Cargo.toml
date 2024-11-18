@@ -43,8 +43,8 @@ default = []
 portable = ["rocksdb/portable"]
 march-native = ["rocksdb/march-native"]
 
-[profile.release]
-overflow-checks = true
+# [profile.release]
+# overflow-checks = true
 
 [badges]
 maintenance = { status = "experimental" }

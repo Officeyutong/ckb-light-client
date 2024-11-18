@@ -127,8 +127,7 @@ impl CKBProtocolHandler for RelayProtocol {
             Some(proved) => {
                 let stored: EpochNumberWithFraction = self
                     .storage
-                    .get_last_state_async()
-                    .await
+                    .get_last_state()
                     .1
                     .raw()
                     .epoch()

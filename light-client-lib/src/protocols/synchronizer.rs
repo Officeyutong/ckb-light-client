@@ -72,13 +72,12 @@ impl CKBProtocolHandler for SyncProtocol {
                 if option {
                     let (start_number, blocks_count, db_blocks) = self
                         .storage
-                        .get_earliest_matched_blocks_async()
-                        .await
+                        .get_earliest_matched_blocks()
                         .expect("get matched blocks from storage");
                     let db_blocks: HashSet<_> =
                         db_blocks.into_iter().map(|(hash, _)| hash).collect();
 
-                    self.storage.remove_matched_blocks_async(start_number).await;
+                    self.storage.remove_matched_blocks(start_number);
                     let blocks = self
                         .peers
                         .clear_matched_blocks(&mut matched_blocks.write().expect("poisoned"));
@@ -93,21 +92,20 @@ impl CKBProtocolHandler for SyncProtocol {
                     // update storage
                     for block in blocks {
                         assert!(db_blocks.contains(&block.header().calc_header_hash()));
-                        self.storage.filter_block_async(block).await;
+                        self.storage.filter_block(block);
                     }
                     self.storage
-                        .update_block_number_async(start_number + blocks_count - 1)
-                        .await;
+                        .update_block_number(start_number + blocks_count - 1);
 
                     // send more GetBlocksProof/GetBlocks requests
                     if let Some((_start_number, _blocks_count, db_blocks)) =
-                        self.storage.get_earliest_matched_blocks_async().await
+                        self.storage.get_earliest_matched_blocks()
                     {
                         self.peers.add_matched_blocks(
                             &mut matched_blocks.write().expect("poisoned"),
                             db_blocks,
                         );
-                        let tip_header = self.storage.get_tip_header_async().await;
+                        let tip_header = self.storage.get_tip_header();
                         prove_or_download_matched_blocks(
                             Arc::clone(&self.peers),
                             &tip_header,

@@ -44,7 +44,8 @@ static TESTNET_CONFIG: &'static str = include_str!("../../config/testnet.toml");
 
 static DEV_CONFIG: &'static str = include_str!("../../config/dev.toml");
 
-static DEV_SOURCE: &'static str = include_str!("../../../ckb/node3/specs/dev.toml");
+static DEV_SOURCE: &'static str =
+    include_str!("/root/.local/share/offckb-nodejs/devnet/specs/dev.toml");
 
 static STORAGE_WITH_DATA: OnceLock<StorageWithChainData> = OnceLock::new();
 
@@ -66,7 +67,7 @@ fn change_status(flag: u8) {
 }
 
 #[wasm_bindgen]
-pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
+pub fn light_client(net_flag: String) -> Result<(), JsValue> {
     if !status(0b0) {
         return Err(JsValue::from_str("Can't start twice"));
     }
@@ -80,7 +81,7 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
         _ => panic!("unsupport flag"),
     };
 
-    let storage = Storage::new(&config.store.path).await;
+    let storage = Storage::new(&config.store.path);
     let chain_spec = ChainSpec::load_from(&match config.chain.as_str() {
         "mainnet" => Resource::bundled("specs/mainnet.toml".to_string()),
         "testnet" => Resource::bundled("specs/testnet.toml".to_string()),
@@ -91,10 +92,10 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
 
     let consensus = chain_spec
         .build_consensus()
-        .expect("build consensus should be OK");
+        .expect("build consensus should be ok");
     let genesis = consensus.genesis_block().data();
 
-    storage.init_genesis_block(genesis).await;
+    storage.init_genesis_block(genesis);
 
     let pending_txs = Arc::new(RwLock::new(PendingTxs::default()));
     let max_outbound_peers = config.network.max_outbound_peers;
@@ -125,7 +126,7 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
     let peers = Arc::new(Peers::new(
         max_outbound_peers,
         CHECK_POINT_INTERVAL,
-        storage.get_last_check_point_async().await,
+        storage.get_last_check_point(),
         BAD_MESSAGE_ALLOWED_EACH_HOUR,
     ));
 
@@ -210,14 +211,14 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub async fn stop() {
     broadcast_exit_signals();
-    STORAGE_WITH_DATA.get().unwrap().storage().shutdown().await;
+    STORAGE_WITH_DATA.get().unwrap().storage().shutdown();
     change_status(0b10);
 }
 
 use ckb_types::prelude::IntoHeaderView;
 
 #[wasm_bindgen]
-pub async fn get_tip_header() -> Result<JsValue, JsValue> {
+pub fn get_tip_header() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -228,14 +229,13 @@ pub async fn get_tip_header() -> Result<JsValue, JsValue> {
             .get()
             .unwrap()
             .storage()
-            .get_tip_header_async()
-            .await
+            .get_tip_header()
             .into_view(),
     ))?)
 }
 
 #[wasm_bindgen]
-pub async fn get_genesis_block() -> Result<JsValue, JsValue> {
+pub fn get_genesis_block() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -246,30 +246,26 @@ pub async fn get_genesis_block() -> Result<JsValue, JsValue> {
             .get()
             .unwrap()
             .storage()
-            .get_genesis_block_async()
-            .await
+            .get_genesis_block()
             .into_view(),
     ))?)
 }
 
 #[wasm_bindgen]
-pub async fn get_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn get_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
     let block_hash = H256::from_slice(&hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
-    let header_view: Option<ckb_jsonrpc_types::HeaderView> = swc
-        .storage()
-        .get_header(&block_hash.pack())
-        .await
-        .map(Into::into);
+    let header_view: Option<ckb_jsonrpc_types::HeaderView> =
+        swc.storage().get_header(&block_hash.pack()).map(Into::into);
 
     Ok(serde_wasm_bindgen::to_value(&header_view)?)
 }
 
 #[wasm_bindgen]
-pub async fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -277,7 +273,7 @@ pub async fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
     let block_hash = H256::from_slice(&hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
 
-    if let Some(value) = swc.storage().get_header(&block_hash.pack()).await {
+    if let Some(value) = swc.storage().get_header(&block_hash.pack()) {
         return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
             ckb_jsonrpc_types::HeaderView,
         >::Fetched {
@@ -317,7 +313,7 @@ pub async fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
+pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -327,16 +323,15 @@ pub async fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
     let tx = tx.into_view();
 
     let swc = STORAGE_WITH_DATA.get().unwrap();
-    let tmpdb = generate_temporary_db(swc, tx.clone())
-        .await
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let tmpdb =
+        generate_temporary_db(swc, tx.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let consensus = CONSENSUS.get().unwrap();
 
     let cycles = verify_tx(
         tx.clone(),
         &tmpdb,
         Arc::clone(consensus),
-        &swc.storage().get_last_state_async().await.1.into_view(),
+        &swc.storage().get_last_state().1.into_view(),
     )
     .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
     Ok(serde_wasm_bindgen::to_value(
@@ -349,7 +344,7 @@ pub async fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
 const MAX_ADDRS: usize = 50;
 
 #[wasm_bindgen]
-pub async fn local_node_info() -> Result<JsValue, JsValue> {
+pub fn local_node_info() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -381,7 +376,7 @@ pub async fn local_node_info() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn get_peers() -> Result<JsValue, JsValue> {
+pub fn get_peers() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -497,7 +492,7 @@ pub fn get_search_key_example() -> JsValue {
 }
 
 #[wasm_bindgen]
-pub async fn set_scripts(
+pub fn set_scripts(
     scripts: Vec<JsValue>,
     command: Option<SetScriptsCommand>,
 ) -> Result<(), JsValue> {
@@ -516,14 +511,13 @@ pub async fn set_scripts(
         .update_filter_scripts(
             scripts.into_iter().map(Into::into).collect(),
             command.map(Into::into).unwrap_or_default(),
-        )
-        .await;
+        );
 
     Ok(())
 }
 
 #[wasm_bindgen]
-pub async fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
+pub fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -531,8 +525,7 @@ pub async fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
         .get()
         .unwrap()
         .storage()
-        .get_filter_scripts()
-        .await;
+        .get_filter_scripts();
 
     Ok(scripts
         .into_iter()
@@ -542,7 +535,7 @@ pub async fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn get_cells(
+pub fn get_cells(
     search_key: JsValue,
     order: Order,
     limit: u32,
@@ -581,15 +574,13 @@ pub async fn get_cells(
 
     let storage = STORAGE_WITH_DATA.get().unwrap().storage();
 
-    let kvs: Vec<_> = storage
-        .collect_iterator(
-            from_key,
-            direction,
-            Box::new(move |key| key.starts_with(&prefix)),
-            limit,
-            skip,
-        )
-        .await;
+    let kvs: Vec<_> = storage.collect_iterator(
+        from_key,
+        direction,
+        Box::new(move |key| key.starts_with(&prefix)),
+        limit,
+        skip,
+    );
 
     let mut cells = Vec::new();
     let mut last_key = Vec::new();
@@ -614,7 +605,6 @@ pub async fn get_cells(
         let tx = packed::Transaction::from_slice(
             &storage
                 .get(&Key::TxHash(&tx_hash).into_vec())
-                .await
                 .unwrap()
                 .expect("stored tx")[12..],
         )
@@ -714,7 +704,7 @@ pub async fn get_cells(
 }
 
 #[wasm_bindgen]
-pub async fn get_transactions(
+pub fn get_transactions(
     search_key: JsValue,
     order: Order,
     limit: u32,
@@ -764,15 +754,13 @@ pub async fn get_transactions(
 
     let storage = STORAGE_WITH_DATA.get().unwrap().storage();
 
-    let kvs: Vec<_> = storage
-        .collect_iterator(
-            from_key,
-            direction,
-            Box::new(move |key| key.starts_with(&prefix)),
-            limit,
-            skip,
-        )
-        .await;
+    let kvs: Vec<_> = storage.collect_iterator(
+        from_key,
+        direction,
+        Box::new(move |key| key.starts_with(&prefix)),
+        limit,
+        skip,
+    );
     if search_key.group_by_transaction.unwrap_or_default() {
         let mut tx_with_cells: Vec<TxWithCells> = Vec::new();
         let mut last_key = Vec::new();
@@ -788,7 +776,6 @@ pub async fn get_transactions(
             let tx = packed::Transaction::from_slice(
                 &storage
                     .get(Key::TxHash(&tx_hash).into_vec())
-                    .await
                     .expect("get tx should be OK")
                     .expect("stored tx")[12..],
             )
@@ -831,7 +818,6 @@ pub async fn get_transactions(
                             )
                             .into_vec(),
                         )
-                        .await
                         .expect("get TxLockScript should be OK")
                         .is_some(),
                     ScriptType::Type => storage
@@ -848,7 +834,6 @@ pub async fn get_transactions(
                             )
                             .into_vec(),
                         )
-                        .await
                         .expect("get TxTypeScript should be OK")
                         .is_some(),
                 };
@@ -898,7 +883,6 @@ pub async fn get_transactions(
             let tx = packed::Transaction::from_slice(
                 &storage
                     .get(Key::TxHash(&tx_hash).into_vec())
-                    .await
                     .expect("get tx should be OK")
                     .expect("stored tx")[12..],
             )
@@ -942,7 +926,6 @@ pub async fn get_transactions(
                                 )
                                 .into_vec(),
                             )
-                            .await
                             .expect("get TxLockScript should be OK")
                             .is_none()
                         {
@@ -964,7 +947,6 @@ pub async fn get_transactions(
                                 )
                                 .into_vec(),
                             )
-                            .await
                             .expect("get TxTypeScript should be OK")
                             .is_none()
                         {
@@ -998,7 +980,7 @@ pub async fn get_transactions(
 }
 
 #[wasm_bindgen]
-pub async fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
+pub fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -1024,15 +1006,13 @@ pub async fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue>
     ) = build_filter_options(search_key)?;
 
     let storage = STORAGE_WITH_DATA.get().unwrap().storage();
-    let kvs: Vec<_> = storage
-        .collect_iterator(
-            from_key,
-            direction,
-            Box::new(move |key| key.starts_with(&prefix)),
-            usize::MAX,
-            skip,
-        )
-        .await;
+    let kvs: Vec<_> = storage.collect_iterator(
+        from_key,
+        direction,
+        Box::new(move |key| key.starts_with(&prefix)),
+        usize::MAX,
+        skip,
+    );
 
     let mut capacity = 0;
     for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
@@ -1051,7 +1031,6 @@ pub async fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue>
         let tx = packed::Transaction::from_slice(
             &storage
                 .get(Key::TxHash(&tx_hash).into_vec())
-                .await
                 .expect("get tx should be OK")
                 .expect("stored tx")[12..],
         )
@@ -1135,7 +1114,6 @@ pub async fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue>
     let key = Key::Meta(LAST_STATE_KEY).into_vec();
     let tip_header = storage
         .get(key)
-        .await
         .expect("snapshot get last state should be ok")
         .map(|data| packed::HeaderReader::from_slice_should_be_ok(&data[32..]).to_entity())
         .expect("tip header should be inited");
@@ -1147,7 +1125,7 @@ pub async fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue>
 }
 
 #[wasm_bindgen]
-pub async fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
+pub fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
@@ -1156,16 +1134,15 @@ pub async fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
     let tx = tx.into_view();
 
     let swc = STORAGE_WITH_DATA.get().unwrap();
-    let tmpdb = generate_temporary_db(swc, tx.clone())
-        .await
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let tmpdb =
+        generate_temporary_db(swc, tx.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let consensus = CONSENSUS.get().unwrap();
 
     let cycles = verify_tx(
         tx.clone(),
         &tmpdb,
         Arc::clone(consensus),
-        &swc.storage().get_last_state_async().await.1.into_view(),
+        &swc.storage().get_last_state().1.into_view(),
     )
     .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
     swc.pending_txs()
@@ -1177,17 +1154,14 @@ pub async fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
     let tx_hash = H256::from_slice(&tx_hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
 
-    if let Some((transaction, header)) = swc
-        .storage()
-        .get_transaction_with_header(&tx_hash.pack())
-        .await
+    if let Some((transaction, header)) = swc.storage().get_transaction_with_header(&tx_hash.pack())
     {
         return Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
             transaction: Some(transaction.into_view().into()),
@@ -1226,12 +1200,12 @@ pub async fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn fetch_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn fetch_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
 
-    let tws = get_transaction(tx_hash.clone()).await?;
+    let tws = get_transaction(tx_hash.clone())?;
     let tws: TransactionWithStatus = serde_wasm_bindgen::from_value(tws)?;
     if tws.transaction.is_some() {
         return Ok(serde_wasm_bindgen::to_value(&FetchStatus::Fetched {

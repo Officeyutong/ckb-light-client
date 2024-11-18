@@ -1,0 +1,101 @@
+<html>
+
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.4/dist/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
+    <script type="module">
+        const dbWorker = new Worker("./light-client-db-worker/db.js", { type: "module" });
+        const lightClientWorker = new Worker("./light-client-wasm/lightclient.js", { type: "module" });
+        const inputBuffer = new SharedArrayBuffer(4 + 4 + 50 * (1 << 20));
+        const outputBuffer = new SharedArrayBuffer(4 + 4 + 50 * (1 << 20));
+        window.initWorkers = async () => {
+            $("#init-button").addClass("loading");
+            dbWorker.postMessage({
+                inputBuffer,
+                outputBuffer,
+                wasmModulePath: "./pkg/light_client_db_worker_bg.wasm",
+                entryJsPath: "./pkg/light_client_db_worker.js"
+            });
+            lightClientWorker.postMessage({
+                inputBuffer,
+                outputBuffer,
+                wasmModulePath: "./pkg/light_client_wasm_bg.wasm",
+                entryJsPath: "./pkg/light_client_wasm.js",
+                netName: "dev"
+            });
+
+            await new Promise((res, rej) => {
+                dbWorker.onmessage = () => res();
+                dbWorker.onerror = (evt) => rej(evt);
+            });
+            await new Promise((res, rej) => {
+                lightClientWorker.onmessage = () => res();
+                lightClientWorker.onerror = (evt) => rej(evt);
+            });
+            window.dbWorker = dbWorker;
+            window.lightClientWorker = lightClientWorker;
+            $("#init-button").removeClass("loading");
+        }
+        window.invoke = async (name, args) => {
+            lightClientWorker.postMessage({
+                name,
+                args: args || []
+            });
+            return await new Promise((res, rej) => {
+                lightClientWorker.onmessage = (e) => res(e.data);
+                lightClientWorker.onerror = (evt) => rej(evt);
+            });
+        }
+        window.takeWhileBenchmark = async (count) => {
+            lightClientWorker.postMessage({
+                count
+            });
+            return await new Promise((res, rej) => {
+                lightClientWorker.onmessage = (e) => res(e.data);
+                lightClientWorker.onerror = (evt) => rej(evt);
+            });
+        };
+        window.doTest = async () => {
+
+
+            function timeout(ms) {
+                return new Promise((resolve) => setTimeout(resolve, ms));
+            }
+
+            await timeout(2000);
+            console.log("tip header:", await window.invoke("get_tip_header"));
+
+            await timeout(5000);
+
+            console.log("get script:", await window.invoke("get_scripts"));
+
+            console.log("get example:", await window.invoke("get_script_example"));
+            await window.invoke("set_scripts", [await window.invoke("get_script_example"), 1]);
+
+            await timeout(2000);
+            console.log("get script delay:", await window.invoke("get_scripts"));
+
+            async function f() {
+                const t = setInterval(async function () {
+                    console.log(
+                        "get cells:",
+                        await window.invoke("get_cells", [await window.invoke("get_search_key_example"), 1, 20, null])
+                    );
+                }, 10000);
+            }
+            await f();
+
+        }
+    </script>
+</head>
+
+<body>
+    <div style="margin-top: 10%;margin-left: 10%;margin-right: 10%;">
+        <button class="ui button" id="init-button" onclick="initWorkers()">Initialize workers</button>
+        <div class="ui divider"></div>
+
+    </div>
+</body>
+
+</html>

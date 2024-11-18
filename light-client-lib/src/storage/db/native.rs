@@ -96,10 +96,6 @@ impl Storage {
         self.db.delete(key).map_err(Into::into)
     }
 
-    pub async fn is_filter_scripts_empty_async(&self) -> bool {
-        self.is_filter_scripts_empty()
-    }
-
     pub fn is_filter_scripts_empty(&self) -> bool {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
         let mode = IteratorMode::From(key_prefix.as_ref(), Direction::Forward);
@@ -240,10 +236,6 @@ impl Storage {
         }
     }
 
-    pub async fn get_scripts_hash_async(&self, block_number: BlockNumber) -> Vec<Byte32> {
-        self.get_scripts_hash(block_number)
-    }
-
     // get scripts hash that should be filtered below the given block number
     pub fn get_scripts_hash(&self, block_number: BlockNumber) -> Vec<Byte32> {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
@@ -307,26 +299,12 @@ impl Storage {
     }
 
     #[allow(clippy::type_complexity)]
-    pub async fn get_earliest_matched_blocks_async(
-        &self,
-    ) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
-        self.get_earliest_matched_blocks()
-    }
-    #[allow(clippy::type_complexity)]
-    pub async fn get_latest_matched_blocks_async(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
-        self.get_latest_matched_blocks()
-    }
-    #[allow(clippy::type_complexity)]
     pub fn get_earliest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
         self.get_matched_blocks(Direction::Forward)
     }
     #[allow(clippy::type_complexity)]
     pub fn get_latest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
         self.get_matched_blocks(Direction::Reverse)
-    }
-
-    pub async fn get_check_points_async(&self, start_index: CpIndex, limit: usize) -> Vec<Byte32> {
-        self.get_check_points(start_index, limit)
     }
 
     fn get_check_points(&self, start_index: CpIndex, limit: usize) -> Vec<Byte32> {
@@ -339,10 +317,6 @@ impl Storage {
             .take(limit)
             .map(|(_key, value)| Byte32::from_slice(&value).expect("stored block filter hash"))
             .collect()
-    }
-
-    pub async fn update_block_number_async(&self, block_number: BlockNumber) {
-        self.update_block_number(block_number)
     }
 
     pub fn update_block_number(&self, block_number: BlockNumber) {
@@ -366,9 +340,6 @@ impl Storage {
         batch.commit().expect("batch commit should be ok");
     }
 
-    pub async fn rollback_to_block_async(&self, to_number: BlockNumber) {
-        self.rollback_to_block(to_number)
-    }
     /// Rollback filtered block data to specified block number
     ///
     /// N.B. The specified block will be removed.
@@ -617,10 +588,6 @@ impl Storage {
         }
     }
 
-    pub async fn get_genesis_block_async(&self) -> Block {
-        self.get_genesis_block()
-    }
-
     pub fn get_genesis_block(&self) -> Block {
         let genesis_hash_and_txs_hash = self
             .get(Key::Meta(GENESIS_BLOCK_KEY).into_vec())
@@ -660,15 +627,6 @@ impl Storage {
             .build()
     }
 
-    pub async fn update_last_state_async(
-        &self,
-        total_difficulty: &U256,
-        tip_header: &Header,
-        last_n_headers: &[HeaderView],
-    ) {
-        self.update_last_state(total_difficulty, tip_header, last_n_headers);
-    }
-
     pub fn update_last_state(
         &self,
         total_difficulty: &U256,
@@ -681,10 +639,6 @@ impl Storage {
         self.put(key, &value)
             .expect("db put last state should be ok");
         self.update_last_n_headers(last_n_headers);
-    }
-
-    pub async fn get_last_state_async(&self) -> (U256, Header) {
-        self.get_last_state()
     }
 
     pub fn get_last_state(&self) -> (U256, Header) {
@@ -713,10 +667,6 @@ impl Storage {
             .expect("db put last n headers should be ok");
     }
 
-    pub async fn get_last_n_headers_async(&self) -> Vec<(u64, Byte32)> {
-        self.get_last_n_headers()
-    }
-
     fn get_last_n_headers(&self) -> Vec<(u64, Byte32)> {
         let key = Key::Meta(LAST_N_HEADERS_KEY).into_vec();
         self.get_pinned(&key)
@@ -734,25 +684,11 @@ impl Storage {
             .expect("last n headers should be inited")
     }
 
-    pub async fn remove_matched_blocks_async(&self, start_number: u64) {
-        self.remove_matched_blocks(start_number)
-    }
-
     /// 0 all blocks downloaded and inserted into storage call this function.
     pub fn remove_matched_blocks(&self, start_number: u64) {
         let mut key = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();
         key.extend(start_number.to_be_bytes());
         self.delete(&key).expect("delete matched blocks");
-    }
-
-    pub async fn add_matched_blocks_async(
-        &self,
-        start_number: u64,
-        blocks_count: u64,
-        // (block-hash, proved)
-        matched_blocks: Vec<(Byte32, bool)>,
-    ) {
-        self.add_matched_blocks(start_number, blocks_count, matched_blocks);
     }
 
     /// the matched blocks must not empty
@@ -776,10 +712,6 @@ impl Storage {
             .expect("db put matched blocks should be ok");
     }
 
-    pub async fn add_fetched_header_async(&self, hwe: &HeaderWithExtension) {
-        self.add_fetched_header(hwe);
-    }
-
     pub fn add_fetched_header(&self, hwe: &HeaderWithExtension) {
         let mut batch = self.batch();
         let block_hash = hwe.header.calc_header_hash();
@@ -793,10 +725,6 @@ impl Storage {
             )
             .expect("batch put should be ok");
         batch.commit().expect("batch commit should be ok");
-    }
-
-    pub async fn add_fetched_tx_async(&self, tx: &Transaction, hwe: &HeaderWithExtension) {
-        self.add_fetched_tx(tx, hwe);
     }
 
     pub fn add_fetched_tx(&self, tx: &Transaction, hwe: &HeaderWithExtension) {
@@ -820,16 +748,8 @@ impl Storage {
         batch.commit().expect("batch commit should be ok");
     }
 
-    pub async fn get_tip_header_async(&self) -> Header {
-        self.get_tip_header()
-    }
-
     pub fn get_tip_header(&self) -> Header {
         self.get_last_state().1
-    }
-
-    pub async fn get_min_filtered_block_number_async(&self) -> BlockNumber {
-        self.get_min_filtered_block_number()
     }
 
     pub fn get_min_filtered_block_number(&self) -> BlockNumber {
@@ -840,19 +760,11 @@ impl Storage {
             .unwrap_or_default()
     }
 
-    pub async fn update_min_filtered_block_number_async(&self, block_number: BlockNumber) {
-        self.update_min_filtered_block_number(block_number);
-    }
-
     pub fn update_min_filtered_block_number(&self, block_number: BlockNumber) {
         let key = Key::Meta(MIN_FILTERED_BLOCK_NUMBER).into_vec();
         let value = block_number.to_le_bytes();
         self.put(key, value)
             .expect("db put min filtered block number should be ok");
-    }
-
-    pub async fn get_last_check_point_async(&self) -> (CpIndex, Byte32) {
-        self.get_last_check_point()
     }
 
     pub fn get_last_check_point(&self) -> (CpIndex, Byte32) {
@@ -865,10 +777,6 @@ impl Storage {
         (index, hash)
     }
 
-    pub async fn get_max_check_point_index_async(&self) -> CpIndex {
-        self.get_max_check_point_index()
-    }
-
     fn get_max_check_point_index(&self) -> CpIndex {
         let key = Key::Meta(MAX_CHECK_POINT_INDEX).into_vec();
         self.get_pinned(&key)
@@ -877,19 +785,11 @@ impl Storage {
             .expect("db get max check point index should be ok")
     }
 
-    pub async fn update_max_check_point_index_async(&self, index: CpIndex) {
-        self.update_max_check_point_index(index);
-    }
-
     fn update_max_check_point_index(&self, index: CpIndex) {
         let key = Key::Meta(MAX_CHECK_POINT_INDEX).into_vec();
         let value = index.to_be_bytes();
         self.put(key, value)
             .expect("db put max check point index should be ok");
-    }
-
-    pub async fn update_check_points_async(&self, start_index: CpIndex, check_points: &[Byte32]) {
-        self.update_check_points(start_index, check_points);
     }
 
     fn update_check_points(&self, start_index: CpIndex, check_points: &[Byte32]) {
@@ -902,10 +802,6 @@ impl Storage {
             index += 1;
         }
         batch.commit().expect("batch commit should be ok");
-    }
-
-    pub async fn filter_block_async(&self, block: Block) {
-        self.filter_block(block);
     }
 
     pub fn filter_block(&self, block: Block) {

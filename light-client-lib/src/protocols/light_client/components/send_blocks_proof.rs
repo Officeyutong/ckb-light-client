@@ -218,11 +218,10 @@ impl<'a> SendBlocksProofProcess<'a> {
                 if self.protocol.peers().remove_fetching_header(&header.hash()) {
                     self.protocol
                         .storage()
-                        .add_fetched_header_async(&HeaderWithExtension {
+                        .add_fetched_header(&HeaderWithExtension {
                             header: header.data(),
                             extension,
-                        })
-                        .await;
+                        });
                 }
             }
         }

@@ -31,12 +31,13 @@ ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4
 ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
 ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
 
+
 getrandom = { version = "0.2", features = ["js"] }
 
 
 [features]
 default = ["console_error_panic_hook"]
 
-[profile.release]
-# Tell `rustc` to optimize for small code size.
-opt-level = "s"
+# [profile.release]
+# # Tell `rustc` to optimize for small code size.
+# opt-level = "s"

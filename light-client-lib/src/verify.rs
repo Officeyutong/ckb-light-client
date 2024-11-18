@@ -180,7 +180,7 @@ where
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn generate_temporary_db(
+pub fn generate_temporary_db(
     swc: &StorageWithChainData,
     transaction: TransactionView,
 ) -> Result<TmpDB, OutPointError> {
@@ -192,7 +192,6 @@ pub async fn generate_temporary_db(
         if let Some(header) = swc
             .storage
             .get_header(&hash)
-            .await
             .or_else(|| swc.peers.find_header_in_proved_state(&hash))
         {
             headers.insert(hash, header);
@@ -202,7 +201,7 @@ pub async fn generate_temporary_db(
         if !outpoints.insert(out_point.clone()) {
             continue;
         }
-        let meta = swc.storage().cell(&out_point, true).await;
+        let meta = swc.storage().cell(&out_point, true);
 
         cells.insert(out_point, meta);
     }
@@ -210,7 +209,7 @@ pub async fn generate_temporary_db(
     for cell_dep in transaction.cell_deps_iter() {
         if cell_dep.dep_type() == DepType::DepGroup.into() {
             let outpoint = cell_dep.out_point();
-            if let CellStatus::Live(dep_group) = swc.storage().cell(&outpoint, true).await {
+            if let CellStatus::Live(dep_group) = swc.storage().cell(&outpoint, true) {
                 let data = dep_group
                     .mem_cell_data
                     .as_ref()
@@ -219,7 +218,7 @@ pub async fn generate_temporary_db(
                     .map_err(|_| OutPointError::InvalidDepGroup(outpoint.clone()))?;
 
                 for sub_out_point in sub_out_points.into_iter() {
-                    let meta = swc.storage().cell(&sub_out_point, true).await;
+                    let meta = swc.storage().cell(&sub_out_point, true);
                     cells.insert(sub_out_point, meta);
                 }
                 cells.insert(outpoint, CellStatus::Live(dep_group));
@@ -227,7 +226,7 @@ pub async fn generate_temporary_db(
         } else {
             cells.insert(
                 cell_dep.out_point(),
-                swc.storage().cell(&cell_dep.out_point(), false).await,
+                swc.storage().cell(&cell_dep.out_point(), false),
             );
         }
     }

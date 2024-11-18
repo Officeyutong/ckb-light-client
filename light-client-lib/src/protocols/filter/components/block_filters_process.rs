@@ -33,7 +33,7 @@ impl<'a> BlockFiltersProcess<'a> {
     }
 
     pub async fn execute(self) -> Status {
-        if self.filter.storage.is_filter_scripts_empty_async().await {
+        if self.filter.storage.is_filter_scripts_empty() {
             info!("ignoring, filter scripts may have been cleared during syncing");
             return Status::ok();
         }
@@ -66,11 +66,7 @@ impl<'a> BlockFiltersProcess<'a> {
             filters count: {filters_count}, blocks count: {blocks_count}."
         );
 
-        let min_filtered_block_number = self
-            .filter
-            .storage
-            .get_min_filtered_block_number_async()
-            .await;
+        let min_filtered_block_number = self.filter.storage.get_min_filtered_block_number();
         debug!("current min filtered block number: {min_filtered_block_number}");
         if min_filtered_block_number + 1 != start_number {
             info!(
@@ -79,17 +75,10 @@ impl<'a> BlockFiltersProcess<'a> {
                 min_filtered_block_number
             );
             // Get matched blocks finished, update filter scripts block number
-            if self
-                .filter
-                .storage
-                .get_earliest_matched_blocks_async()
-                .await
-                .is_none()
-            {
+            if self.filter.storage.get_earliest_matched_blocks().is_none() {
                 self.filter
                     .storage
-                    .update_block_number_async(min_filtered_block_number)
-                    .await;
+                    .update_block_number(min_filtered_block_number);
             }
             return Status::ok();
         }
@@ -108,7 +97,7 @@ impl<'a> BlockFiltersProcess<'a> {
         }
 
         let (finalized_check_point_index, finalized_check_point_hash) =
-            self.filter.storage.get_last_check_point_async().await;
+            self.filter.storage.get_last_check_point();
         let finalized_check_point_number = self
             .filter
             .peers
@@ -153,9 +142,8 @@ impl<'a> BlockFiltersProcess<'a> {
                     let cached_check_point = self
                         .filter
                         .storage
-                        .get_check_points_async(cached_check_point_index, 1)
-                        .await
-                        .first()
+                        .get_check_points(cached_check_point_index, 1)
+                        .get(0)
                         .cloned()
                         .expect("all check points before finalized should be existed");
                     (cached_check_point, cached_block_filter_hashes)
@@ -215,7 +203,7 @@ impl<'a> BlockFiltersProcess<'a> {
             parent_block_filter_hash = current_hash;
         }
 
-        let possible_match_blocks = self.filter.check_filters_data(block_filters, limit).await;
+        let possible_match_blocks = self.filter.check_filters_data(block_filters, limit);
         let possible_match_blocks_len = possible_match_blocks.len();
         trace!(
             "peer {}, matched blocks: {}",
@@ -223,7 +211,7 @@ impl<'a> BlockFiltersProcess<'a> {
             possible_match_blocks_len
         );
         let actual_blocks_count = blocks_count.min(limit);
-        let tip_header = self.filter.storage.get_tip_header_async().await;
+        let tip_header = self.filter.storage.get_tip_header();
         let filtered_block_number = start_number - 1 + actual_blocks_count as BlockNumber;
 
         if possible_match_blocks_len != 0 {
@@ -231,17 +219,15 @@ impl<'a> BlockFiltersProcess<'a> {
                 .iter()
                 .map(|block_hash| (block_hash.clone(), block_hash == &prove_state_block_hash))
                 .collect::<Vec<_>>();
-            self.filter
-                .storage
-                .add_matched_blocks_async(start_number, actual_blocks_count as u64, blocks)
-                .await;
+            self.filter.storage.add_matched_blocks(
+                start_number,
+                actual_blocks_count as u64,
+                blocks,
+            );
             let option = matched_blocks.read().expect("poisoned").is_empty();
             if option {
-                if let Some((_start_number, _blocks_count, db_blocks)) = self
-                    .filter
-                    .storage
-                    .get_earliest_matched_blocks_async()
-                    .await
+                if let Some((_start_number, _blocks_count, db_blocks)) =
+                    self.filter.storage.get_earliest_matched_blocks()
                 {
                     self.filter.peers.add_matched_blocks(
                         &mut matched_blocks.write().expect("poisoned"),
@@ -259,13 +245,11 @@ impl<'a> BlockFiltersProcess<'a> {
         } else if matched_blocks.read().expect("poisoned").is_empty() {
             self.filter
                 .storage
-                .update_block_number_async(filtered_block_number)
-                .await
+                .update_block_number(filtered_block_number)
         }
 
         self.filter
-            .update_min_filtered_block_number(filtered_block_number)
-            .await;
+            .update_min_filtered_block_number(filtered_block_number);
 
         let could_request_more_block_filters = self
             .filter

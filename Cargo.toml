@@ -1,7 +1,16 @@
 [workspace]
-members = ["light-client-lib", "light-client-bin", "light-client-wasm"]
+members = [
+    "light-client-lib",
+    # "light-client-bin",
+    "light-client-wasm",
+    "light-client-db-worker",
+    "light-client-db-common",
+]
 resolver = "2"
 
 
 [profile.release]
 overflow-checks = true
+
+[patch.crates-io]
+quanta = { git = "https://github.com/Officeyutong/quanta", rev = "23b998a" }

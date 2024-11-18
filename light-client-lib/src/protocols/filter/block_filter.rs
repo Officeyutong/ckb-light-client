@@ -43,7 +43,7 @@ impl FilterProtocol {
         }
     }
 
-    pub async fn check_filters_data(
+    pub fn check_filters_data(
         &self,
         block_filters: packed::BlockFilters,
         limit: usize,
@@ -52,8 +52,7 @@ impl FilterProtocol {
         let reader = GCSFilterReader::new(SipHasher24Builder::new(0, 0), M, P);
         let script_hashes = self
             .storage
-            .get_scripts_hash_async(start_number + limit as BlockNumber)
-            .await;
+            .get_scripts_hash(start_number + limit as BlockNumber);
         block_filters
             .filters()
             .into_iter()
@@ -82,30 +81,28 @@ impl FilterProtocol {
             .collect()
     }
 
-    async fn should_ask(&self, immediately: bool) -> bool {
-        !self.storage.is_filter_scripts_empty_async().await
+    fn should_ask(&self, immediately: bool) -> bool {
+        !self.storage.is_filter_scripts_empty()
             && (immediately
                 || self.last_ask_time.read().unwrap().is_none()
                 || self.last_ask_time.read().unwrap().unwrap().elapsed()
                     > GET_BLOCK_FILTERS_TIMEOUT)
     }
 
-    pub async fn update_min_filtered_block_number(&self, block_number: BlockNumber) {
-        self.storage
-            .update_min_filtered_block_number_async(block_number)
-            .await;
+    pub fn update_min_filtered_block_number(&self, block_number: BlockNumber) {
+        self.storage.update_min_filtered_block_number(block_number);
         self.peers.update_min_filtered_block_number(block_number);
         self.last_ask_time.write().unwrap().replace(Instant::now());
     }
 
-    pub(crate) async fn try_send_get_block_filters(
+    pub(crate) fn try_send_get_block_filters(
         &self,
         nc: BoxedCKBProtocolContext,
         immediately: bool,
     ) {
-        let min_filtered_block_number = self.storage.get_min_filtered_block_number_async().await;
+        let min_filtered_block_number = self.storage.get_min_filtered_block_number();
         let start_number = min_filtered_block_number + 1;
-        let (finalized_check_point_index, _) = self.storage.get_last_check_point_async().await;
+        let (finalized_check_point_index, _) = self.storage.get_last_check_point();
         let could_ask_more = self.peers.could_request_more_block_filters(
             finalized_check_point_index,
             min_filtered_block_number,
@@ -145,7 +142,7 @@ impl FilterProtocol {
             debug!("found best proved peer {}", peer);
 
             if let Some((db_start_number, blocks_count, db_blocks)) =
-                self.storage.get_earliest_matched_blocks_async().await
+                self.storage.get_earliest_matched_blocks()
             {
                 let matched_blocks = self.peers.matched_blocks();
                 debug!(
@@ -163,7 +160,7 @@ impl FilterProtocol {
                         &mut matched_blocks.write().expect("poisoned"),
                         db_blocks,
                     );
-                    let tip_header = self.storage.get_tip_header_async().await;
+                    let tip_header = self.storage.get_tip_header();
                     prove_or_download_matched_blocks(
                         Arc::clone(&self.peers),
                         &tip_header,
@@ -179,7 +176,7 @@ impl FilterProtocol {
                         self.send_get_block_filters(nc, *peer, start_number);
                     }
                 }
-            } else if self.should_ask(immediately).await && could_ask_more {
+            } else if self.should_ask(immediately) && could_ask_more {
                 debug!(
                     "send get block filters to {}, start_number={}",
                     peer, start_number
@@ -194,10 +191,10 @@ impl FilterProtocol {
     }
 
     pub(crate) async fn try_send_get_block_filter_hashes(&self, nc: BoxedCKBProtocolContext) {
-        let min_filtered_block_number = self.storage.get_min_filtered_block_number_async().await;
+        let min_filtered_block_number = self.storage.get_min_filtered_block_number();
         self.peers
             .update_min_filtered_block_number(min_filtered_block_number);
-        let finalized_check_point_index = self.storage.get_max_check_point_index_async().await;
+        let finalized_check_point_index = self.storage.get_max_check_point_index();
         let cached_check_point_index = self.peers.get_cached_block_filter_hashes().0;
         if let Some(start_number) = self
             .peers
@@ -243,15 +240,12 @@ impl FilterProtocol {
                 components::BlockFilterCheckPointsProcess::new(reader, self, nc, peer).execute()
             }
             packed::BlockFilterMessageUnionReader::BlockFilterHashes(reader) => {
-                components::BlockFilterHashesProcess::new(reader, self, nc, peer)
-                    .execute()
-                    .await
+                components::BlockFilterHashesProcess::new(reader, self, nc, peer).execute()
                 // Status::ok()
             }
             packed::BlockFilterMessageUnionReader::BlockFilters(reader) => {
-                components::BlockFiltersProcess::new(reader, self, nc, peer)
-                    .execute()
-                    .await
+                components::BlockFiltersProcess::new(reader, self, nc, peer).execute()
+                .await
                 // Status::ok()
             }
             _ => StatusCode::UnexpectedProtocolMessage.into(),
@@ -384,7 +378,7 @@ impl CKBProtocolHandler for FilterProtocol {
     async fn notify(&mut self, nc: BoxedCKBProtocolContext, token: u64) {
         match token {
             GET_BLOCK_FILTERS_TOKEN => {
-                self.try_send_get_block_filters(nc, false).await;
+                self.try_send_get_block_filters(nc, false);
             }
             GET_BLOCK_FILTER_HASHES_TOKEN => {
                 self.try_send_get_block_filter_hashes(nc).await;

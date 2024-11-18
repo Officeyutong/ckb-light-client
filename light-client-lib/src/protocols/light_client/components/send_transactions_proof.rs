@@ -188,16 +188,13 @@ impl<'a> SendTransactionsProofProcess<'a> {
                         .peers()
                         .remove_fetching_transaction(&tx.calc_tx_hash(), &header.hash())
                     {
-                        self.protocol
-                            .storage()
-                            .add_fetched_tx_async(
-                                &tx,
-                                &HeaderWithExtension {
-                                    header: header.data(),
-                                    extension: extension.as_ref().cloned(),
-                                },
-                            )
-                            .await;
+                        self.protocol.storage().add_fetched_tx(
+                            &tx,
+                            &HeaderWithExtension {
+                                header: header.data(),
+                                extension: extension.as_ref().cloned(),
+                            },
+                        );
                     }
                 }
             }

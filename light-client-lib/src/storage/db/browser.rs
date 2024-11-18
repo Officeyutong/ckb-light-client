@@ -1,72 +1,52 @@
-use super::super::{
-    extract_raw_data, parse_matched_blocks, BlockNumber, Byte32, CellIndex, CellType, CpIndex,
-    HeaderWithExtension, Key, KeyPrefix, OutputIndex, Script, ScriptStatus, ScriptType,
-    SetScriptsCommand, TxIndex, Value, WrappedBlockView, FILTER_SCRIPTS_KEY, GENESIS_BLOCK_KEY,
-    LAST_N_HEADERS_KEY, LAST_STATE_KEY, MATCHED_FILTER_BLOCKS_KEY, MAX_CHECK_POINT_INDEX,
-    MIN_FILTERED_BLOCK_NUMBER,
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    path::Path,
+    sync::atomic::AtomicBool,
 };
-use crate::error::Result;
-use ckb_network::runtime;
+
+use super::super::{
+    BlockNumber, Byte32, CellType, Script, ScriptStatus, ScriptType, SetScriptsCommand,
+};
+use anyhow::{anyhow, bail, Context};
 use ckb_types::{
     core::{
         cell::{CellMeta, CellStatus},
-        HeaderView, TransactionInfo,
+        TransactionInfo,
     },
-    packed::{self, Block, CellOutput, Header, OutPoint, Transaction},
-    prelude::*,
+    packed::{CellOutput, OutPoint},
+    prelude::{IntoHeaderView, IntoTransactionView, Reader, Unpack},
+};
+
+use ckb_types::{core::HeaderView, prelude::Builder};
+use ckb_types::{
+    packed::{self, Block, Header, Transaction},
+    prelude::{Entity, FromSliceShouldBeOk, IntoBlockView, Pack, PackVec},
     utilities::{build_filter_data, calc_filter_hash},
     U256,
 };
-use idb::{
-    DatabaseEvent, Factory, IndexParams, KeyPath, KeyRange, ManagedCursor, ObjectStore,
-    ObjectStoreParams, TransactionMode, TransactionResult,
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-    usize,
-};
-use tokio::sync::mpsc::channel;
-
 pub use idb::CursorDirection;
+use light_client_db_common::{
+    idb_cursor_direction_to_ckb, read_command_payload, write_command_with_payload,
+    DbCommandRequest, DbCommandResponse, InputCommand, OutputCommand, KV,
+};
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct KV {
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
-}
+use log::{debug, info};
+use num_traits::{cast::ToPrimitive, FromPrimitive};
+use serde_json::json;
 
-struct Request {
-    cmd: CommandRequest,
-    resp: tokio::sync::oneshot::Sender<CommandResponse>,
-}
-
-enum CommandResponse {
-    Read { values: Vec<Option<Vec<u8>>> },
-    Put,
-    Delete,
-    Iterator { kvs: Vec<KV> },
-    IteratorKey { keys: Vec<Vec<u8>> },
-    Shutdown,
-}
-
-impl std::fmt::Debug for CommandResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CommandResponse::Delete => {
-                write!(f, "Delete")
-            }
-            CommandResponse::Read { .. } => write!(f, "Read"),
-            CommandResponse::Put { .. } => write!(f, "Put"),
-            CommandResponse::Shutdown => write!(f, "Shutdown"),
-            CommandResponse::Iterator { .. } => write!(f, "Iterator"),
-            CommandResponse::IteratorKey { .. } => write!(f, "Iterator key"),
-        }
-    }
-}
-
-enum CommandRequest {
+use crate::{
+    error::{Error, Result},
+    storage::{
+        extract_raw_data, parse_matched_blocks, CellIndex, CpIndex, HeaderWithExtension, Key,
+        KeyPrefix, OutputIndex, TxIndex, Value, WrappedBlockView, FILTER_SCRIPTS_KEY,
+        GENESIS_BLOCK_KEY, LAST_N_HEADERS_KEY, LAST_STATE_KEY, MATCHED_FILTER_BLOCKS_KEY,
+        MAX_CHECK_POINT_INDEX, MIN_FILTERED_BLOCK_NUMBER,
+    },
+};
+use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
+use web_sys::js_sys::{Atomics, Int32Array, SharedArrayBuffer, Uint8Array};
+enum CommandRequestWithTakeWhile {
     Read {
         keys: Vec<Vec<u8>>,
     },
@@ -90,273 +70,327 @@ enum CommandRequest {
         limit: usize,
         skip: usize,
     },
-    Shutdown,
+    TakeWhileBenchmark {
+        take_while: Box<dyn Fn(&[u8]) -> bool + Send + 'static>,
+        test_count: usize,
+    },
 }
 
-impl std::fmt::Debug for CommandRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CommandRequest::Delete { .. } => {
-                write!(f, "Delete")
-            }
-            CommandRequest::Read { .. } => write!(f, "Read"),
-            CommandRequest::Put { .. } => write!(f, "Put"),
-            CommandRequest::Shutdown => write!(f, "Shutdown"),
-            CommandRequest::Iterator { .. } => write!(f, "Iterator"),
-            CommandRequest::IteratorKey { .. } => write!(f, "Iterator key"),
+thread_local! {
+    static INPUT_BUFFER: RefCell<Option<SharedArrayBuffer>> = const { RefCell::new(None) };
+    static OUTPUT_BUFFER: RefCell<Option<SharedArrayBuffer>> = const { RefCell::new(None) };
+}
+#[wasm_bindgen]
+pub fn set_shared_array(input: JsValue, output: JsValue) {
+    console_error_panic_hook::set_once();
+    INPUT_BUFFER.with(|v| {
+        *v.borrow_mut() = Some(input.dyn_into().unwrap());
+    });
+    OUTPUT_BUFFER.with(|v| {
+        *v.borrow_mut() = Some(output.dyn_into().unwrap());
+    });
+}
+
+#[derive(Clone)]
+struct CommunicationArrays {
+    input_i32_arr: Int32Array,
+    input_u8_arr: Uint8Array,
+    output_i32_arr: Int32Array,
+    output_u8_arr: Uint8Array,
+}
+
+impl CommunicationArrays {
+    fn prepare_from_global() -> Self {
+        let (input_i32_arr, input_u8_arr) = INPUT_BUFFER.with(|x| {
+            let binding = x.borrow();
+            let buf = binding.as_ref().unwrap();
+            (Int32Array::new(buf), Uint8Array::new(buf))
+        });
+        let (output_i32_arr, output_u8_arr) = OUTPUT_BUFFER.with(|x| {
+            let binding = x.borrow();
+            let buf = binding.as_ref().unwrap();
+            (Int32Array::new(buf), Uint8Array::new(buf))
+        });
+        Self {
+            input_i32_arr,
+            input_u8_arr,
+            output_i32_arr,
+            output_u8_arr,
         }
+    }
+    fn dispatch_database_command(
+        &self,
+        cmd: CommandRequestWithTakeWhile,
+    ) -> anyhow::Result<DbCommandResponse> {
+        let (new_cmd, take_while) = match cmd {
+            CommandRequestWithTakeWhile::Read { keys } => (DbCommandRequest::Read { keys }, None),
+            CommandRequestWithTakeWhile::Put { kvs } => (DbCommandRequest::Put { kvs }, None),
+            CommandRequestWithTakeWhile::Delete { keys } => {
+                (DbCommandRequest::Delete { keys }, None)
+            }
+            CommandRequestWithTakeWhile::Iterator {
+                start_key_bound,
+                order,
+                take_while,
+                limit,
+                skip,
+            } => (
+                DbCommandRequest::Iterator {
+                    start_key_bound,
+                    order: idb_cursor_direction_to_ckb(order),
+                    limit,
+                    skip,
+                },
+                Some(take_while),
+            ),
+            CommandRequestWithTakeWhile::IteratorKey {
+                start_key_bound,
+                order,
+                take_while,
+                limit,
+                skip,
+            } => (
+                DbCommandRequest::IteratorKey {
+                    start_key_bound,
+                    order: idb_cursor_direction_to_ckb(order),
+                    limit,
+                    skip,
+                },
+                Some(take_while),
+            ),
+            CommandRequestWithTakeWhile::TakeWhileBenchmark {
+                take_while,
+                test_count,
+            } => (
+                DbCommandRequest::TakeWhileBenchmark { test_count },
+                Some(take_while),
+            ),
+        };
+        let CommunicationArrays {
+            input_i32_arr,
+            input_u8_arr,
+            output_i32_arr,
+            output_u8_arr,
+        } = self;
+        output_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+        write_command_with_payload(
+            InputCommand::DbRequest,
+            new_cmd,
+            &input_i32_arr,
+            &input_u8_arr,
+        )
+        .with_context(|| anyhow!("Failed to write db command"))?;
+        loop {
+            Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting.to_i32().unwrap()).unwrap();
+            let output_cmd = OutputCommand::from_i32(output_i32_arr.get_index(0)).unwrap();
+            output_i32_arr.set_index(0, 0);
+            match output_cmd {
+                OutputCommand::OpenDatabaseResponse
+                | OutputCommand::Waiting
+                | OutputCommand::ShutdownResponse => unreachable!(),
+                OutputCommand::RequestTakeWhile => {
+                    let arg = read_command_payload::<Vec<u8>>(&output_i32_arr, &output_u8_arr)?;
+                    let ok = take_while.as_ref().unwrap()(&arg);
+
+                    debug!(
+                        "Received take while request with args {:?}, result {}",
+                        arg, ok
+                    );
+                    write_command_with_payload(
+                        InputCommand::ResponseTakeWhile,
+                        json!(ok),
+                        &input_i32_arr,
+                        &input_u8_arr,
+                    )?;
+                    continue;
+                }
+                OutputCommand::DbResponse => {
+                    return Ok(read_command_payload::<DbCommandResponse>(
+                        &output_i32_arr,
+                        &output_u8_arr,
+                    )?);
+                }
+                OutputCommand::Error => {
+                    let payload = read_command_payload::<String>(&output_i32_arr, &output_u8_arr)?;
+                    bail!("{}", payload);
+                }
+            }
+        }
+    }
+}
+
+static DB_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+#[wasm_bindgen]
+pub fn open_database(store_name: &str) {
+    let CommunicationArrays {
+        input_i32_arr,
+        input_u8_arr,
+        output_i32_arr,
+        output_u8_arr,
+    } = CommunicationArrays::prepare_from_global();
+    output_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+    write_command_with_payload(
+        InputCommand::OpenDatabase,
+        json!(store_name),
+        &input_i32_arr,
+        &input_u8_arr,
+    )
+    .with_context(|| anyhow!("Failed to write db command"))
+    .unwrap();
+    Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting.to_i32().unwrap()).unwrap();
+    let output_cmd = OutputCommand::from_i32(output_i32_arr.get_index(0)).unwrap();
+    match output_cmd {
+        OutputCommand::OpenDatabaseResponse => {
+            DB_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        OutputCommand::Error => panic!(
+            "{}",
+            read_command_payload::<String>(&output_i32_arr, &output_u8_arr).unwrap()
+        ),
+        OutputCommand::RequestTakeWhile
+        | OutputCommand::Waiting
+        | OutputCommand::DbResponse
+        | OutputCommand::ShutdownResponse => unreachable!(),
+    }
+}
+
+#[wasm_bindgen]
+pub fn take_while_benchmark(test_count: usize) -> usize {
+    if let DbCommandResponse::TakeWhileBenchmark { duration_in_ns } =
+        CommunicationArrays::prepare_from_global()
+            .dispatch_database_command(CommandRequestWithTakeWhile::TakeWhileBenchmark {
+                take_while: Box::new(|buf| buf.len() == 64),
+                test_count,
+            })
+            .expect("Unable to dispatch command")
+    {
+        duration_in_ns
+    } else {
+        unreachable!()
     }
 }
 
 #[derive(Clone)]
 pub struct Storage {
-    chan: tokio::sync::mpsc::Sender<Request>,
+    comm_arrays: CommunicationArrays,
 }
+// We can ensure that only one worker in process could access one storage
+unsafe impl Sync for Storage {}
+unsafe impl Send for Storage {}
 
 impl Storage {
-    pub async fn new<P: AsRef<Path>>(path: P) -> Self {
-        let factory = Factory::new().unwrap();
-        let mut open_request = factory.open("ckb-light-client", Some(1)).unwrap();
-        let store_name = path.as_ref().to_str().unwrap().to_owned();
-        open_request.on_upgrade_needed(move |event| {
-            let database = event.database().unwrap();
-            let store_params = ObjectStoreParams::new();
-
-            let store = database
-                .create_object_store("data/store", store_params)
-                .unwrap();
-            let mut index_params = IndexParams::new();
-            index_params.unique(true);
-            store
-                .create_index("key", KeyPath::new_single("key"), Some(index_params))
-                .unwrap();
-        });
-        let db = open_request.await.unwrap();
-        let (tx, mut rx) = channel(128);
-        runtime::spawn(async move {
-            loop {
-                let request: Request = rx.recv().await.unwrap();
-                match request.cmd {
-                    CommandRequest::Read { keys } => {
-                        let tran = db
-                            .transaction(&[&store_name], TransactionMode::ReadOnly)
-                            .unwrap();
-                        let store = tran.object_store(&store_name).unwrap();
-                        let mut res = Vec::new();
-                        for key in keys {
-                            let key = serde_wasm_bindgen::to_value(&key).unwrap();
-
-                            res.push(
-                                store.get(key).unwrap().await.unwrap().map(|v| {
-                                    serde_wasm_bindgen::from_value::<KV>(v).unwrap().value
-                                }),
-                            );
-                        }
-                        assert_eq!(TransactionResult::Committed, tran.await.unwrap());
-                        request
-                            .resp
-                            .send(CommandResponse::Read { values: res })
-                            .unwrap()
-                    }
-                    CommandRequest::Put { kvs } => {
-                        let tran = db
-                            .transaction(&[&store_name], TransactionMode::ReadWrite)
-                            .unwrap();
-                        let store = tran.object_store(&store_name).unwrap();
-
-                        for kv in kvs {
-                            let key = serde_wasm_bindgen::to_value(&kv.key).unwrap();
-                            let value = serde_wasm_bindgen::to_value(&kv).unwrap();
-                            store.put(&value, Some(&key)).unwrap().await.unwrap();
-                        }
-                        assert_eq!(
-                            TransactionResult::Committed,
-                            tran.commit().unwrap().await.unwrap()
-                        );
-                        request.resp.send(CommandResponse::Put).unwrap();
-                    }
-                    CommandRequest::Delete { keys } => {
-                        let tran = db
-                            .transaction(&[&store_name], TransactionMode::ReadWrite)
-                            .unwrap();
-                        let store = tran.object_store(&store_name).unwrap();
-
-                        for key in keys {
-                            let key = serde_wasm_bindgen::to_value(&key).unwrap();
-                            store.delete(key).unwrap().await.unwrap();
-                        }
-                        assert_eq!(
-                            TransactionResult::Committed,
-                            tran.commit().unwrap().await.unwrap()
-                        );
-                        request.resp.send(CommandResponse::Delete).unwrap();
-                    }
-                    CommandRequest::Shutdown => {
-                        request.resp.send(CommandResponse::Shutdown).unwrap();
-                        break;
-                    }
-                    CommandRequest::Iterator {
-                        start_key_bound,
-                        order,
-                        take_while,
-                        limit,
-                        skip,
-                    } => {
-                        let tran = db
-                            .transaction(&[&store_name], TransactionMode::ReadOnly)
-                            .unwrap();
-                        let store = tran.object_store(&store_name).unwrap();
-
-                        let kvs = collect_iterator(
-                            &store,
-                            &start_key_bound,
-                            order,
-                            take_while,
-                            limit,
-                            skip,
-                        )
-                        .await
-                        .unwrap();
-                        assert_eq!(TransactionResult::Committed, tran.await.unwrap());
-                        request
-                            .resp
-                            .send(CommandResponse::Iterator { kvs })
-                            .unwrap();
-                    }
-                    CommandRequest::IteratorKey {
-                        start_key_bound,
-                        order,
-                        take_while,
-                        limit,
-                        skip,
-                    } => {
-                        let tran = db
-                            .transaction(&[&store_name], TransactionMode::ReadOnly)
-                            .unwrap();
-                        let store = tran.object_store(&store_name).unwrap();
-                        let keys = collect_iterator_keys(
-                            &store,
-                            &start_key_bound,
-                            order,
-                            take_while,
-                            limit,
-                            skip,
-                        )
-                        .await
-                        .unwrap();
-                        assert_eq!(TransactionResult::Committed, tran.await.unwrap());
-                        request
-                            .resp
-                            .send(CommandResponse::IteratorKey { keys })
-                            .unwrap();
-                    }
-                }
-            }
-        });
-        Self { chan: tx }
+    pub fn shutdown(&self) {
+        let CommunicationArrays {
+            input_i32_arr,
+            input_u8_arr,
+            output_i32_arr,
+            ..
+        } = &self.comm_arrays;
+        output_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+        write_command_with_payload(
+            InputCommand::Shutdown,
+            json!({}),
+            &input_i32_arr,
+            &input_u8_arr,
+        )
+        .unwrap();
+    }
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        if !DB_INITIALIZED.load(std::sync::atomic::Ordering::SeqCst) {
+            open_database(path.as_ref().to_str().unwrap());
+            DB_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        Self {
+            comm_arrays: CommunicationArrays::prepare_from_global(),
+        }
     }
 
-    pub fn batch(&self) -> Batch {
+    fn batch(&self) -> Batch {
         Batch {
-            add: Vec::new(),
-            delete: Vec::new(),
-            chan: self.chan.clone(),
+            add: vec![],
+            delete: vec![],
+            comm_arrays: self.comm_arrays.clone(),
         }
     }
-
-    pub async fn shutdown(&self) {
-        if let CommandResponse::Shutdown = send_command(&self.chan, CommandRequest::Shutdown).await
-        {
-        } else {
-            unreachable!()
-        }
-    }
-
-    async fn put<K, V>(&self, key: K, value: V) -> Result<()>
+    fn put<K, V>(&self, key: K, value: V) -> Result<()>
     where
         K: AsRef<[u8]>,
         V: AsRef<[u8]>,
     {
-        let kv = KV {
-            key: key.as_ref().to_vec(),
-            value: value.as_ref().to_vec(),
-        };
-
-        send_command(&self.chan, CommandRequest::Put { kvs: vec![kv] }).await;
-        Ok(())
+        self.comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Put {
+                kvs: vec![KV {
+                    key: key.as_ref().to_vec(),
+                    value: value.as_ref().to_vec(),
+                }],
+            })
+            .map(|_| ())
+            .map_err(|e| Error::Indexdb(format!("{:?}", e)))
     }
-
-    pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<Vec<u8>>> {
-        let values = send_command(
-            &self.chan,
-            CommandRequest::Read {
+    pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<Vec<u8>>> {
+        let values = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Read {
                 keys: vec![key.as_ref().to_vec()],
-            },
-        )
-        .await;
-        if let CommandResponse::Read { mut values } = values {
-            return Ok(values.pop().unwrap());
-        } else {
-            unreachable!()
+            })
+            .map_err(|e| Error::Indexdb(format!("{:?}", e)))?;
+        match values {
+            DbCommandResponse::Read { values } => Ok(values.into_iter().last().unwrap()),
+            _ => unreachable!(),
         }
     }
-
-    async fn get_pinned<'a, K>(&'a self, key: K) -> Result<Option<Vec<u8>>>
+    fn get_pinned<'a, K>(&'a self, key: K) -> Result<Option<Vec<u8>>>
     where
         K: AsRef<[u8]>,
     {
-        self.get(key).await
+        self.get(key)
     }
-
-    async fn delete<K: AsRef<[u8]>>(&self, key: K) -> Result<()> {
-        send_command(
-            &self.chan,
-            CommandRequest::Delete {
+    fn delete<K: AsRef<[u8]>>(&self, key: K) -> Result<()> {
+        self.comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Delete {
                 keys: vec![key.as_ref().to_vec()],
-            },
-        )
-        .await;
-        Ok(())
+            })
+            .map(|_| ())
+            .map_err(|e| Error::Indexdb(format!("{:?}", e)))
     }
-
-    pub async fn is_filter_scripts_empty_async(&self) -> bool {
+    pub fn is_filter_scripts_empty(&self) -> bool {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
 
-        let value = send_command(
-            &self.chan,
-            CommandRequest::IteratorKey {
+        let value = match self.comm_arrays.dispatch_database_command(
+            CommandRequestWithTakeWhile::IteratorKey {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
                 limit: 1,
                 skip: 0,
             },
-        )
-        .await;
+        ) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
 
-        if let CommandResponse::IteratorKey { keys } = value {
+        if let DbCommandResponse::IteratorKey { keys } = value {
             keys.is_empty()
         } else {
             unreachable!()
         }
     }
-
-    pub async fn get_filter_scripts(&self) -> Vec<ScriptStatus> {
+    pub fn get_filter_scripts(&self) -> Vec<ScriptStatus> {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
         let key_prefix_clone = key_prefix.clone();
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix_clone.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix_clone)),
                 limit: 1,
                 skip: 0,
-            },
-        )
-        .await;
+            })
+            .unwrap();
 
-        if let CommandResponse::Iterator { kvs } = value {
+        if let DbCommandResponse::Iterator { kvs } = value {
             kvs.into_iter()
                 .map(|kv| (kv.key, kv.value))
                 .map(|(key, value)| {
@@ -383,12 +417,7 @@ impl Storage {
             unreachable!()
         }
     }
-
-    pub async fn update_filter_scripts(
-        &self,
-        scripts: Vec<ScriptStatus>,
-        command: SetScriptsCommand,
-    ) {
+    pub fn update_filter_scripts(&self, scripts: Vec<ScriptStatus>, command: SetScriptsCommand) {
         let mut should_filter_genesis_block = false;
         let mut batch = self.batch();
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
@@ -398,9 +427,9 @@ impl Storage {
                 should_filter_genesis_block = scripts.iter().any(|ss| ss.block_number == 0);
 
                 let key_prefix_clone = key_prefix.clone();
-                let remove_keys = send_command(
-                    &self.chan,
-                    CommandRequest::IteratorKey {
+                let remove_keys = self
+                    .comm_arrays
+                    .dispatch_database_command(CommandRequestWithTakeWhile::IteratorKey {
                         start_key_bound: key_prefix_clone.clone(),
                         order: CursorDirection::NextUnique,
                         take_while: Box::new(move |raw_key: &[u8]| {
@@ -408,12 +437,11 @@ impl Storage {
                         }),
                         limit: usize::MAX,
                         skip: 0,
-                    },
-                )
-                .await;
-
-                if let CommandResponse::IteratorKey { keys } = remove_keys {
-                    batch.delete_many(keys).await.unwrap();
+                    })
+                    .unwrap();
+                    info!("Received {:?}",remove_keys);
+                if let DbCommandResponse::IteratorKey { keys } = remove_keys {
+                    batch.delete_many(keys).unwrap();
                 } else {
                     unreachable!()
                 }
@@ -475,33 +503,31 @@ impl Storage {
             }
         }
 
-        batch.commit().await.expect("batch commit should be ok");
+        batch.commit().expect("batch commit should be ok");
 
-        self.update_min_filtered_block_number_by_scripts().await;
-        self.clear_matched_blocks().await;
+        self.update_min_filtered_block_number_by_scripts();
+        self.clear_matched_blocks();
 
         if should_filter_genesis_block {
-            let block = self.get_genesis_block_async().await;
-            self.filter_block_async(block).await;
+            let block = self.get_genesis_block();
+            self.filter_block(block);
         }
     }
-
-    async fn update_min_filtered_block_number_by_scripts(&self) {
+    fn update_min_filtered_block_number_by_scripts(&self) {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
 
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
                 limit: usize::MAX,
                 skip: 0,
-            },
-        )
-        .await;
+            })
+            .unwrap();
 
-        if let CommandResponse::Iterator { kvs } = value {
+        if let DbCommandResponse::Iterator { kvs } = value {
             let min_block_number = kvs
                 .into_iter()
                 .map(|kv| (kv.key, kv.value))
@@ -515,30 +541,28 @@ impl Storage {
                 .min();
 
             if let Some(n) = min_block_number {
-                self.update_min_filtered_block_number_async(n).await;
+                self.update_min_filtered_block_number(n);
             }
         } else {
             unreachable!()
         }
     }
-
-    pub async fn get_scripts_hash_async(&self, block_number: BlockNumber) -> Vec<Byte32> {
+    pub fn get_scripts_hash(&self, block_number: BlockNumber) -> Vec<Byte32> {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
 
         let key_prefix_clone = key_prefix.clone();
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix_clone.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix_clone)),
                 limit: usize::MAX,
                 skip: 0,
-            },
-        )
-        .await;
+            })
+            .unwrap();
 
-        if let CommandResponse::Iterator { kvs } = value {
+        if let DbCommandResponse::Iterator { kvs } = value {
             kvs.into_iter()
                 .map(|kv| (kv.key, kv.value))
                 .filter_map(|(key, value)| {
@@ -560,32 +584,29 @@ impl Storage {
             unreachable!()
         }
     }
-
-    async fn clear_matched_blocks(&self) {
-        let key_prefix = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();
+    fn clear_matched_blocks(&self) {
+        let key_prefix: Vec<u8> = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();
 
         let mut batch = self.batch();
 
-        let value = send_command(
-            &self.chan,
-            CommandRequest::IteratorKey {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::IteratorKey {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
                 limit: usize::MAX,
                 skip: 0,
-            },
-        )
-        .await;
-        if let CommandResponse::IteratorKey { keys } = value {
-            batch.delete_many(keys).await.unwrap();
-            batch.commit().await.unwrap();
+            })
+            .unwrap();
+        if let DbCommandResponse::IteratorKey { keys } = value {
+            batch.delete_many(keys).unwrap();
+            batch.commit().unwrap();
         } else {
             unreachable!()
         }
     }
-
-    async fn get_matched_blocks(
+    fn get_matched_blocks(
         &self,
         direction: CursorDirection,
     ) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
@@ -602,18 +623,17 @@ impl Storage {
 
         let key_prefix_clone = key_prefix.clone();
 
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: iter_from,
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix_clone)),
                 limit: 1,
                 skip: 0,
-            },
-        )
-        .await;
-        if let CommandResponse::Iterator { kvs } = value {
+            })
+            .unwrap();
+        if let DbCommandResponse::Iterator { kvs } = value {
             kvs.into_iter()
                 .map(|kv| (kv.key, kv.value))
                 .map(|(key, value)| {
@@ -628,34 +648,29 @@ impl Storage {
             unreachable!()
         }
     }
-
-    pub async fn get_earliest_matched_blocks_async(
-        &self,
-    ) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
-        self.get_matched_blocks(CursorDirection::NextUnique).await
+    pub fn get_earliest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
+        self.get_matched_blocks(CursorDirection::NextUnique)
     }
 
-    pub async fn get_latest_matched_blocks_async(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
-        self.get_matched_blocks(CursorDirection::PrevUnique).await
+    pub fn get_latest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
+        self.get_matched_blocks(CursorDirection::PrevUnique)
     }
-
-    pub async fn get_check_points_async(&self, start_index: CpIndex, limit: usize) -> Vec<Byte32> {
+    pub fn get_check_points(&self, start_index: CpIndex, limit: usize) -> Vec<Byte32> {
         let start_key = Key::CheckPointIndex(start_index).into_vec();
         let key_prefix = [KeyPrefix::CheckPointIndex as u8];
 
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: start_key,
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
                 limit,
                 skip: 0,
-            },
-        )
-        .await;
+            })
+            .unwrap();
 
-        if let CommandResponse::Iterator { kvs } = value {
+        if let DbCommandResponse::Iterator { kvs } = value {
             kvs.into_iter()
                 .map(|kv| (kv.key, kv.value))
                 .map(|(_key, value)| Byte32::from_slice(&value).expect("stored block filter hash"))
@@ -664,24 +679,22 @@ impl Storage {
             unreachable!()
         }
     }
-
-    pub async fn update_block_number_async(&self, block_number: BlockNumber) {
+    pub fn update_block_number(&self, block_number: BlockNumber) {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
         let mut batch = self.batch();
 
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
                 limit: usize::MAX,
                 skip: 0,
-            },
-        )
-        .await;
+            })
+            .unwrap();
 
-        if let CommandResponse::Iterator { kvs } = value {
+        if let DbCommandResponse::Iterator { kvs } = value {
             kvs.into_iter()
                 .map(|kv| (kv.key, kv.value))
                 .for_each(|(key, value)| {
@@ -696,12 +709,11 @@ impl Storage {
                             .expect("batch put should be ok")
                     }
                 });
-            batch.commit().await.expect("batch commit should be ok");
+            batch.commit().expect("batch commit should be ok");
         }
     }
-
-    pub async fn rollback_to_block_async(&self, to_number: BlockNumber) {
-        let scripts = self.get_filter_scripts().await;
+    pub fn rollback_to_block(&self, to_number: BlockNumber) {
+        let scripts = self.get_filter_scripts();
         let mut batch = self.batch();
 
         for ss in scripts {
@@ -716,9 +728,9 @@ impl Storage {
                 start_key.extend_from_slice(BlockNumber::MAX.to_be_bytes().as_ref());
                 let key_prefix_len = key_prefix.len();
 
-                let value = send_command(
-                    &self.chan,
-                    CommandRequest::Iterator {
+                let value = self
+                    .comm_arrays
+                    .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                         start_key_bound: key_prefix.clone(),
                         order: CursorDirection::PrevUnique,
                         take_while: Box::new(move |raw_key: &[u8]| {
@@ -731,11 +743,10 @@ impl Storage {
                         }),
                         limit: usize::MAX,
                         skip: 0,
-                    },
-                )
-                .await;
+                    })
+                    .unwrap();
 
-                if let CommandResponse::Iterator { kvs } = value {
+                if let DbCommandResponse::Iterator { kvs } = value {
                     for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
                         let block_number = BlockNumber::from_be_bytes(
                             key[key_prefix_len..key_prefix_len + 8]
@@ -758,16 +769,13 @@ impl Storage {
                         if key[key_prefix_len + 16] == 0 {
                             let (_, _, tx) = self
                                 .get_transaction(&tx_hash)
-                                .await
                                 .expect("stored transaction history");
                             let input = tx.raw().inputs().get(cell_index as usize).unwrap();
                             if let Some((
                                 generated_by_block_number,
                                 generated_by_tx_index,
                                 _previous_tx,
-                            )) = self
-                                .get_transaction(&input.previous_output().tx_hash())
-                                .await
+                            )) = self.get_transaction(&input.previous_output().tx_hash())
                             {
                                 let key = match ss.script_type {
                                     ScriptType::Lock => Key::CellLockScript(
@@ -858,7 +866,7 @@ impl Storage {
             }
         }
         // we should also sync block filters again
-        if self.get_min_filtered_block_number_async().await >= to_number {
+        if self.get_min_filtered_block_number() >= to_number {
             batch
                 .put(
                     Key::Meta(MIN_FILTERED_BLOCK_NUMBER).into_vec(),
@@ -867,14 +875,14 @@ impl Storage {
                 .expect("batch put should be ok");
         }
 
-        batch.commit().await.expect("batch commit should be ok");
+        batch.commit().expect("batch commit should be ok");
     }
 }
 
 pub struct Batch {
     add: Vec<KV>,
     delete: Vec<Vec<u8>>,
-    chan: tokio::sync::mpsc::Sender<Request>,
+    comm_arrays: CommunicationArrays,
 }
 
 impl Batch {
@@ -899,35 +907,36 @@ impl Batch {
         Ok(())
     }
 
-    async fn delete_many(&mut self, keys: Vec<Vec<u8>>) -> Result<()> {
-        send_command(&self.chan, CommandRequest::Delete { keys }).await;
-        Ok(())
+    fn delete_many(&mut self, keys: Vec<Vec<u8>>) -> Result<()> {
+        self.comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Delete { keys })
+            .map(|_| ())
+            .map_err(|e| Error::Indexdb(format!("{:?}", e)))
     }
 
-    async fn commit(self) -> Result<()> {
+    fn commit(self) -> Result<()> {
         if !self.add.is_empty() {
-            send_command(&self.chan, CommandRequest::Put { kvs: self.add }).await;
+            self.comm_arrays
+                .dispatch_database_command(CommandRequestWithTakeWhile::Put { kvs: self.add })
+                .map(|_| ())
+                .map_err(|e| Error::Indexdb(format!("{:?}", e)))?;
         }
 
         if !self.delete.is_empty() {
-            send_command(&self.chan, CommandRequest::Delete { keys: self.delete }).await;
+            self.comm_arrays
+                .dispatch_database_command(CommandRequestWithTakeWhile::Delete {
+                    keys: self.delete,
+                })
+                .map(|_| ())
+                .map_err(|e| Error::Indexdb(format!("{:?}", e)))?;
         }
 
         Ok(())
     }
 }
 
-async fn send_command(
-    chan: &tokio::sync::mpsc::Sender<Request>,
-    cmd: CommandRequest,
-) -> CommandResponse {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    chan.send(Request { cmd, resp: tx }).await.unwrap();
-    rx.await.unwrap()
-}
-
 impl Storage {
-    pub async fn collect_iterator(
+    pub fn collect_iterator(
         &self,
         start_key_bound: Vec<u8>,
         order: CursorDirection,
@@ -935,29 +944,27 @@ impl Storage {
         limit: usize,
         skip: usize,
     ) -> Vec<KV> {
-        let value = send_command(
-            &self.chan,
-            CommandRequest::Iterator {
+        let value = self
+            .comm_arrays
+            .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound,
                 order,
                 take_while,
                 limit,
                 skip,
-            },
-        )
-        .await;
-        if let CommandResponse::Iterator { kvs } = value {
+            })
+            .unwrap();
+        if let DbCommandResponse::Iterator { kvs } = value {
             return kvs;
         } else {
             unreachable!()
         }
     }
-    pub async fn init_genesis_block(&self, block: Block) {
+    pub fn init_genesis_block(&self, block: Block) {
         let genesis_hash = block.calc_header_hash();
         let genesis_block_key = Key::Meta(GENESIS_BLOCK_KEY).into_vec();
         if let Some(stored_genesis_hash) = self
             .get(genesis_block_key.as_slice())
-            .await
             .expect("get genesis block")
             .map(|v| v[0..32].to_vec())
         {
@@ -994,12 +1001,11 @@ impl Storage {
             batch
                 .put_kv(genesis_block_key, genesis_hash_and_txs_hash.as_slice())
                 .expect("batch put should be ok");
-            batch.commit().await.expect("batch commit should be ok");
-            self.update_last_state_async(&U256::zero(), &block.header(), &[])
-                .await;
+            batch.commit().expect("batch commit should be ok");
+            self.update_last_state(&U256::zero(), &block.header(), &[]);
             let genesis_block_filter_hash: Byte32 = {
                 let block_view = block.into_view();
-                let provider = WrappedBlockView::new(&block_view);
+                let provider: WrappedBlockView<'_> = WrappedBlockView::new(&block_view);
                 let parent_block_filter_hash = Byte32::zero();
                 let (genesis_block_filter_vec, missing_out_points) =
                     build_filter_data(provider, &block_view.transactions());
@@ -1009,17 +1015,14 @@ impl Storage {
                 let genesis_block_filter_data = genesis_block_filter_vec.pack();
                 calc_filter_hash(&parent_block_filter_hash, &genesis_block_filter_data).pack()
             };
-            self.update_max_check_point_index_async(0).await;
-            self.update_check_points_async(0, &[genesis_block_filter_hash])
-                .await;
-            self.update_min_filtered_block_number_async(0).await;
+            self.update_max_check_point_index(0);
+            self.update_check_points(0, &[genesis_block_filter_hash]);
+            self.update_min_filtered_block_number(0);
         }
     }
-
-    pub async fn get_genesis_block_async(&self) -> Block {
+    pub fn get_genesis_block(&self) -> Block {
         let genesis_hash_and_txs_hash = self
             .get(Key::Meta(GENESIS_BLOCK_KEY).into_vec())
-            .await
             .expect("get genesis block")
             .expect("inited storage");
         let genesis_hash = Byte32::from_slice(&genesis_hash_and_txs_hash[0..32])
@@ -1027,7 +1030,6 @@ impl Storage {
         let genesis_header = Header::from_slice(
             &self
                 .get(Key::BlockHash(&genesis_hash).into_vec())
-                .await
                 .expect("db get should be ok")
                 .expect("stored block hash / header mapping"),
         )
@@ -1044,7 +1046,6 @@ impl Storage {
                             )
                             .into_vec(),
                         )
-                        .await
                         .expect("db get should be ok")
                         .expect("stored genesis block tx")[12..],
                 )
@@ -1057,8 +1058,7 @@ impl Storage {
             .transactions(transactions.pack())
             .build()
     }
-
-    pub async fn update_last_state_async(
+    pub fn update_last_state(
         &self,
         total_difficulty: &U256,
         tip_header: &Header,
@@ -1068,15 +1068,12 @@ impl Storage {
         let mut value = total_difficulty.to_le_bytes().to_vec();
         value.extend(tip_header.as_slice());
         self.put(key, &value)
-            .await
             .expect("db put last state should be ok");
-        self.update_last_n_headers(last_n_headers).await;
+        self.update_last_n_headers(last_n_headers);
     }
-
-    pub async fn get_last_state_async(&self) -> (U256, Header) {
+    pub fn get_last_state(&self) -> (U256, Header) {
         let key = Key::Meta(LAST_STATE_KEY).into_vec();
         self.get_pinned(&key)
-            .await
             .expect("db get last state should be ok")
             .map(|data| {
                 let mut total_difficulty_bytes = [0u8; 32];
@@ -1087,23 +1084,20 @@ impl Storage {
             })
             .expect("tip header should be inited")
     }
-
-    async fn update_last_n_headers(&self, headers: &[HeaderView]) {
+    fn update_last_n_headers(&self, headers: &[HeaderView]) {
         let key = Key::Meta(LAST_N_HEADERS_KEY).into_vec();
         let mut value: Vec<u8> = Vec::with_capacity(headers.len() * 40);
         for header in headers {
             value.extend(header.number().to_le_bytes());
+
             value.extend(header.hash().as_slice());
         }
         self.put(key, &value)
-            .await
             .expect("db put last n headers should be ok");
     }
-
-    pub async fn get_last_n_headers_async(&self) -> Vec<(u64, Byte32)> {
+    pub fn get_last_n_headers(&self) -> Vec<(u64, Byte32)> {
         let key = Key::Meta(LAST_N_HEADERS_KEY).into_vec();
         self.get_pinned(&key)
-            .await
             .expect("db get last n headers should be ok")
             .map(|data| {
                 assert!(data.len() % 40 == 0);
@@ -1117,14 +1111,12 @@ impl Storage {
             })
             .expect("last n headers should be inited")
     }
-
-    pub async fn remove_matched_blocks_async(&self, start_number: u64) {
+    pub fn remove_matched_blocks(&self, start_number: u64) {
         let mut key = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();
         key.extend(start_number.to_be_bytes());
-        self.delete(&key).await.expect("delete matched blocks");
+        self.delete(&key).expect("delete matched blocks");
     }
-
-    pub async fn add_matched_blocks_async(
+    pub fn add_matched_blocks(
         &self,
         start_number: u64,
         blocks_count: u64,
@@ -1141,11 +1133,9 @@ impl Storage {
             value.push(u8::from(proved));
         }
         self.put(key, &value)
-            .await
             .expect("db put matched blocks should be ok");
     }
-
-    pub async fn add_fetched_header_async(&self, hwe: &HeaderWithExtension) {
+    pub fn add_fetched_header(&self, hwe: &HeaderWithExtension) {
         let mut batch = self.batch();
         let block_hash = hwe.header.calc_header_hash();
         batch
@@ -1157,10 +1147,9 @@ impl Storage {
                 block_hash.as_slice(),
             )
             .expect("batch put should be ok");
-        batch.commit().await.expect("batch commit should be ok");
+        batch.commit().expect("batch commit should be ok");
     }
-
-    pub async fn add_fetched_tx_async(&self, tx: &Transaction, hwe: &HeaderWithExtension) {
+    pub fn add_fetched_tx(&self, tx: &Transaction, hwe: &HeaderWithExtension) {
         let mut batch = self.batch();
         let block_hash = hwe.header.calc_header_hash();
         let block_number: u64 = hwe.header.raw().number().unpack();
@@ -1178,63 +1167,49 @@ impl Storage {
         let key = Key::TxHash(&tx_hash).into_vec();
         let value = Value::Transaction(block_number, tx_index as TxIndex, tx);
         batch.put_kv(key, value).expect("batch put should be ok");
-        batch.commit().await.expect("batch commit should be ok");
+        batch.commit().expect("batch commit should be ok");
     }
 
-    pub async fn get_tip_header_async(&self) -> Header {
-        self.get_tip_header().await
+    pub fn get_tip_header(&self) -> Header {
+        self.get_last_state().1
     }
 
-    pub async fn get_tip_header(&self) -> Header {
-        self.get_last_state_async().await.1
-    }
-
-    pub async fn get_min_filtered_block_number_async(&self) -> BlockNumber {
+    pub fn get_min_filtered_block_number(&self) -> BlockNumber {
         let key = Key::Meta(MIN_FILTERED_BLOCK_NUMBER).into_vec();
         self.get_pinned(&key)
-            .await
             .expect("db get min filtered block number should be ok")
             .map(|data| u64::from_le_bytes(AsRef::<[u8]>::as_ref(&data).try_into().unwrap()))
             .unwrap_or_default()
     }
-
-    pub async fn update_min_filtered_block_number_async(&self, block_number: BlockNumber) {
+    pub fn update_min_filtered_block_number(&self, block_number: BlockNumber) {
         let key = Key::Meta(MIN_FILTERED_BLOCK_NUMBER).into_vec();
         let value = block_number.to_le_bytes();
         self.put(key, value)
-            .await
             .expect("db put min filtered block number should be ok");
     }
-
-    pub async fn get_last_check_point_async(&self) -> (CpIndex, Byte32) {
-        let index = self.get_max_check_point_index_async().await;
+    pub fn get_last_check_point(&self) -> (CpIndex, Byte32) {
+        let index = self.get_max_check_point_index();
         let hash = self
-            .get_check_points_async(index, 1)
-            .await
+            .get_check_points(index, 1)
             .get(0)
             .cloned()
             .expect("db get last check point should be ok");
         (index, hash)
     }
-
-    pub async fn get_max_check_point_index_async(&self) -> CpIndex {
+    pub fn get_max_check_point_index(&self) -> CpIndex {
         let key = Key::Meta(MAX_CHECK_POINT_INDEX).into_vec();
         self.get_pinned(&key)
-            .await
             .expect("db get max check point index should be ok")
             .map(|data| CpIndex::from_be_bytes(AsRef::<[u8]>::as_ref(&data).try_into().unwrap()))
             .expect("db get max check point index should be ok 1")
     }
-
-    pub async fn update_max_check_point_index_async(&self, index: CpIndex) {
+    pub fn update_max_check_point_index(&self, index: CpIndex) {
         let key = Key::Meta(MAX_CHECK_POINT_INDEX).into_vec();
         let value = index.to_be_bytes();
         self.put(key, value)
-            .await
             .expect("db put max check point index should be ok");
     }
-
-    pub async fn update_check_points_async(&self, start_index: CpIndex, check_points: &[Byte32]) {
+    pub fn update_check_points(&self, start_index: CpIndex, check_points: &[Byte32]) {
         let mut index = start_index;
         let mut batch = self.batch();
         for cp in check_points {
@@ -1243,13 +1218,11 @@ impl Storage {
             batch.put_kv(key, value).expect("batch put should be ok");
             index += 1;
         }
-        batch.commit().await.expect("batch commit should be ok");
+        batch.commit().expect("batch commit should be ok");
     }
-
-    pub async fn filter_block_async(&self, block: Block) {
+    pub fn filter_block(&self, block: Block) {
         let scripts: HashSet<(Script, ScriptType)> = self
             .get_filter_scripts()
-            .await
             .into_iter()
             .map(|ss| (ss.script, ss.script_type))
             .collect();
@@ -1261,7 +1234,7 @@ impl Storage {
             for (input_index, input) in tx.raw().inputs().into_iter().enumerate() {
                 let previous_tx_hash = input.previous_output().tx_hash();
                 if let Some((generated_by_block_number, generated_by_tx_index, previous_tx)) =
-                    self.get_transaction(&previous_tx_hash).await.or(txs
+                    self.get_transaction(&previous_tx_hash).or(txs
                         .get(&previous_tx_hash)
                         .map(|(tx_index, tx)| (block_number, *tx_index, tx.clone())))
                 {
@@ -1425,15 +1398,10 @@ impl Storage {
                 )
                 .expect("batch put should be ok");
         }
-        batch.commit().await.expect("batch commit should be ok");
+        batch.commit().expect("batch commit should be ok");
     }
-
-    async fn get_transaction(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Option<(BlockNumber, TxIndex, Transaction)> {
+    fn get_transaction(&self, tx_hash: &Byte32) -> Option<(BlockNumber, TxIndex, Transaction)> {
         self.get(Key::TxHash(tx_hash).into_vec())
-            .await
             .map(|v| {
                 v.map(|v| {
                     (
@@ -1445,17 +1413,12 @@ impl Storage {
             })
             .expect("db get should be ok")
     }
-
-    pub async fn get_transaction_with_header(
-        &self,
-        tx_hash: &Byte32,
-    ) -> Option<(Transaction, Header)> {
-        match self.get_transaction(tx_hash).await {
+    pub fn get_transaction_with_header(&self, tx_hash: &Byte32) -> Option<(Transaction, Header)> {
+        match self.get_transaction(tx_hash) {
             Some((block_number, _tx_index, tx)) => {
                 let block_hash = Byte32::from_slice(
                     &self
                         .get(Key::BlockNumber(block_number).into_vec())
-                        .await
                         .expect("db get should be ok")
                         .expect("stored block number / hash mapping"),
                 )
@@ -1464,7 +1427,6 @@ impl Storage {
                 let header = Header::from_slice(
                     &self
                         .get(Key::BlockHash(&block_hash).into_vec())
-                        .await
                         .expect("db get should be ok")
                         .expect("stored block hash / header mapping")[..Header::TOTAL_SIZE],
                 )
@@ -1474,14 +1436,11 @@ impl Storage {
             None => None,
         }
     }
-
-    pub async fn cell(&self, out_point: &OutPoint, _eager_load: bool) -> CellStatus {
-        if let Some((block_number, tx_index, tx)) = self.get_transaction(&out_point.tx_hash()).await
-        {
+    pub fn cell(&self, out_point: &OutPoint, _eager_load: bool) -> CellStatus {
+        if let Some((block_number, tx_index, tx)) = self.get_transaction(&out_point.tx_hash()) {
             let block_hash = Byte32::from_slice(
                 &self
                     .get(Key::BlockNumber(block_number).into_vec())
-                    .await
                     .expect("db get should be ok")
                     .expect("stored block number / hash mapping"),
             )
@@ -1490,7 +1449,6 @@ impl Storage {
             let header = Header::from_slice(
                 &self
                     .get(Key::BlockHash(&block_hash).into_vec())
-                    .await
                     .expect("db get should be ok")
                     .expect("stored block hash / header mapping")[..Header::TOTAL_SIZE],
             )
@@ -1524,10 +1482,8 @@ impl Storage {
         }
         CellStatus::Unknown
     }
-
-    pub async fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
+    pub fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
         self.get(Key::BlockHash(hash).into_vec())
-            .await
             .map(|v| {
                 v.map(|v| {
                     Header::from_slice(&v[..Header::TOTAL_SIZE])
@@ -1537,147 +1493,4 @@ impl Storage {
             })
             .expect("db get should be ok")
     }
-}
-
-async fn open_iterator(
-    store: &ObjectStore,
-    start_key_bound: &[u8],
-    order: CursorDirection,
-) -> Result<ManagedCursor> {
-    let index = store.index("key").unwrap();
-
-    Ok(index
-        .open_cursor(
-            Some(
-                KeyRange::lower_bound(
-                    &serde_wasm_bindgen::to_value(&start_key_bound).unwrap(),
-                    Some(false),
-                )
-                .unwrap()
-                .into(),
-            ),
-            Some(order),
-        )?
-        .await?
-        .unwrap()
-        .into_managed())
-}
-
-pub async fn collect_iterator<F>(
-    store: &ObjectStore,
-    start_key_bound: &[u8],
-    order: CursorDirection,
-    take_while: F,
-    limit: usize,
-    skip: usize,
-) -> Result<Vec<KV>>
-where
-    F: Fn(&[u8]) -> bool,
-{
-    let mut iter = open_iterator(store, start_key_bound, order).await?;
-
-    let mut res = Vec::new();
-
-    let mut skip_index = 0;
-
-    if iter.key().is_err() {
-        return Ok(res);
-    }
-
-    let raw_kv = serde_wasm_bindgen::from_value::<KV>(iter.value()?.unwrap()).unwrap();
-
-    if take_while(&raw_kv.key) {
-        skip_index += 1;
-        if skip_index > skip {
-            res.push(raw_kv);
-        }
-    } else {
-        return Ok(res);
-    }
-
-    while iter.next(None).await.is_ok() {
-        if iter.key().is_err() {
-            return Ok(res);
-        }
-
-        if res.len() >= limit {
-            return Ok(res);
-        }
-
-        let key = iter.key().unwrap();
-        if key.is_none() {
-            return Ok(res);
-        }
-
-        let raw_kv = serde_wasm_bindgen::from_value::<KV>(iter.value()?.unwrap()).unwrap();
-        if take_while(&raw_kv.key) {
-            skip_index += 1;
-            if skip_index > skip {
-                res.push(raw_kv);
-            }
-        } else {
-            return Ok(res);
-        }
-    }
-
-    Ok(res)
-}
-
-async fn collect_iterator_keys<F>(
-    store: &ObjectStore,
-    start_key_bound: &[u8],
-    order: CursorDirection,
-    take_while: F,
-    limit: usize,
-    skip: usize,
-) -> Result<Vec<Vec<u8>>>
-where
-    F: Fn(&[u8]) -> bool,
-{
-    let mut iter = open_iterator(store, start_key_bound, order).await?;
-
-    let mut res = Vec::new();
-    let mut skip_index = 0;
-
-    if iter.key().is_err() {
-        return Ok(res);
-    }
-
-    let raw_key = serde_wasm_bindgen::from_value::<Vec<u8>>(iter.key()?.unwrap()).unwrap();
-
-    if take_while(&raw_key) {
-        skip_index += 1;
-        if skip_index > skip {
-            res.push(raw_key);
-        }
-    } else {
-        return Ok(res);
-    }
-
-    while iter.next(None).await.is_ok() {
-        if iter.key().is_err() {
-            return Ok(res);
-        }
-
-        if res.len() >= limit {
-            return Ok(res);
-        }
-
-        let key = iter.key().unwrap();
-        if key.is_none() {
-            return Ok(res);
-        }
-
-        let raw_key = serde_wasm_bindgen::from_value::<Vec<u8>>(key.unwrap()).unwrap();
-        if take_while(&raw_key) {
-            skip_index += 1;
-            if skip_index > skip {
-                res.push(raw_key);
-            }
-        } else {
-            return Ok(res);
-        }
-    }
-
-    Ok(res)
 }
