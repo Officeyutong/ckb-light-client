@@ -9,19 +9,19 @@ homepage = "https://github.com/nervosnetwork/ckb-light-client"
 repository = "https://github.com/nervosnetwork/ckb-light-client"
 
 [dependencies]
-ckb-app-config = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-constant = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-error = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-script = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-verification = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-hash = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
+ckb-app-config = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-constant = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-error = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-script = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-verification = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-hash = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
 
 log = "0.4.14"
 path-clean = "0.1.0"
@@ -57,11 +57,11 @@ idb = "0.6"
 serde-wasm-bindgen = "0.6.5"
 
 [dev-dependencies]
-ckb-shared = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-chain = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-tx-pool = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-store = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e75496e", features = [
+ckb-shared = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-chain = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-tx-pool = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-store = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c", features = [
     "enable_faketime",
 ] }
 tempfile = "3.0"

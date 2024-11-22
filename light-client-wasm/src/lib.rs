@@ -73,7 +73,7 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
     utils::set_panic_hook();
     wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
 
-    let config = match net_flag.as_str() {
+    let mut config = match net_flag.as_str() {
         "testnet" => TESTNET_CONFIG.parse::<RunEnv>().unwrap(),
         "mainnet" => MAINNET_CONFIG.parse::<RunEnv>().unwrap(),
         "dev" => DEV_CONFIG.parse::<RunEnv>().unwrap(),
@@ -98,7 +98,11 @@ pub async fn ligth_client(net_flag: String) -> Result<(), JsValue> {
 
     let pending_txs = Arc::new(RwLock::new(PendingTxs::default()));
     let max_outbound_peers = config.network.max_outbound_peers;
+    let network_secret_key = ckb_app_config::generate_random_key();
+    // Users need to generate and save this secret key by themselves, otherwise the service cannot be started.
+    config.network.secret_key = network_secret_key;
     let network_state = NetworkState::from_config(config.network)
+        .await
         .map(|network_state| {
             Arc::new(network_state.required_flags(
                 Flags::DISCOVERY
