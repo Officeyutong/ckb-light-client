@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-num-derive = "0.4.2"
-num-traits = "0.2.19"
 serde = { version = "1.0.215", features = ["derive"] }
 idb = "0.6"
 web-sys = "0.3.72"

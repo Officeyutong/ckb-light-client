@@ -32,7 +32,6 @@ use light_client_db_common::{
 };
 
 use log::{debug, info};
-use num_traits::{cast::ToPrimitive, FromPrimitive};
 use serde_json::json;
 
 use crate::{
@@ -172,17 +171,17 @@ impl CommunicationArrays {
             output_i32_arr,
             output_u8_arr,
         } = self;
-        output_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+        output_i32_arr.set_index(0, InputCommand::Waiting as i32);
         write_command_with_payload(
-            InputCommand::DbRequest,
+            InputCommand::DbRequest as i32,
             new_cmd,
             &input_i32_arr,
             &input_u8_arr,
         )
         .with_context(|| anyhow!("Failed to write db command"))?;
         loop {
-            Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting.to_i32().unwrap()).unwrap();
-            let output_cmd = OutputCommand::from_i32(output_i32_arr.get_index(0)).unwrap();
+            Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
+            let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
             output_i32_arr.set_index(0, 0);
             match output_cmd {
                 OutputCommand::OpenDatabaseResponse
@@ -197,7 +196,7 @@ impl CommunicationArrays {
                         arg, ok
                     );
                     write_command_with_payload(
-                        InputCommand::ResponseTakeWhile,
+                        InputCommand::ResponseTakeWhile as i32,
                         json!(ok),
                         &input_i32_arr,
                         &input_u8_arr,
@@ -229,17 +228,17 @@ pub fn open_database(store_name: &str) {
         output_i32_arr,
         output_u8_arr,
     } = CommunicationArrays::prepare_from_global();
-    output_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+    output_i32_arr.set_index(0, InputCommand::Waiting as i32);
     write_command_with_payload(
-        InputCommand::OpenDatabase,
+        InputCommand::OpenDatabase as i32,
         json!(store_name),
         &input_i32_arr,
         &input_u8_arr,
     )
     .with_context(|| anyhow!("Failed to write db command"))
     .unwrap();
-    Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting.to_i32().unwrap()).unwrap();
-    let output_cmd = OutputCommand::from_i32(output_i32_arr.get_index(0)).unwrap();
+    Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
+    let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
     match output_cmd {
         OutputCommand::OpenDatabaseResponse => {
             DB_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -275,7 +274,7 @@ pub fn take_while_benchmark(test_count: usize) -> usize {
 pub struct Storage {
     comm_arrays: CommunicationArrays,
 }
-// We can ensure that only one worker in process could access one storage
+// Send & Sync should be implemented, since each WebWorker has its own memory space, nothing could be accessed by multiple threads, and nothing could be sended to other threads
 unsafe impl Sync for Storage {}
 unsafe impl Send for Storage {}
 
@@ -287,9 +286,9 @@ impl Storage {
             output_i32_arr,
             ..
         } = &self.comm_arrays;
-        output_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+        output_i32_arr.set_index(0, InputCommand::Waiting as i32);
         write_command_with_payload(
-            InputCommand::Shutdown,
+            InputCommand::Shutdown  as i32,
             json!({}),
             &input_i32_arr,
             &input_u8_arr,
@@ -439,7 +438,7 @@ impl Storage {
                         skip: 0,
                     })
                     .unwrap();
-                    info!("Received {:?}",remove_keys);
+                info!("Received {:?}", remove_keys);
                 if let DbCommandResponse::IteratorKey { keys } = remove_keys {
                     batch.delete_many(keys).unwrap();
                 } else {

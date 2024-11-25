@@ -1,6 +1,4 @@
 use anyhow::Context;
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::ToPrimitive;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use web_sys::js_sys::{Atomics, Int32Array, Uint8Array};
 
@@ -56,7 +54,7 @@ pub enum DbCommandRequest {
         test_count: usize,
     },
 }
-#[derive(FromPrimitive, ToPrimitive)]
+#[repr(i32)]
 pub enum InputCommand {
     Waiting = 0,
     OpenDatabase = 1,
@@ -65,7 +63,22 @@ pub enum InputCommand {
     ResponseTakeWhile = 20,
 }
 
-#[derive(FromPrimitive, ToPrimitive)]
+impl TryFrom<i32> for InputCommand {
+    type Error = anyhow::Error;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Waiting),
+            1 => Ok(Self::OpenDatabase),
+            2 => Ok(Self::DbRequest),
+            3 => Ok(Self::Shutdown),
+            20 => Ok(Self::ResponseTakeWhile),
+            s => Err(anyhow!("Invalid command: {}", s)),
+        }
+    }
+}
+
+#[repr(i32)]
 pub enum OutputCommand {
     Waiting = 0,
     OpenDatabaseResponse = 1,
@@ -73,6 +86,22 @@ pub enum OutputCommand {
     ShutdownResponse = 3,
     Error = 10,
     RequestTakeWhile = 20,
+}
+
+impl TryFrom<i32> for OutputCommand {
+    type Error = anyhow::Error;
+
+    fn try_from(value: i32) -> Result<Self, <OutputCommand as TryFrom<i32>>::Error> {
+        match value {
+            0 => Ok(Self::Waiting),
+            1 => Ok(Self::OpenDatabaseResponse),
+            2 => Ok(Self::DbResponse),
+            3 => Ok(Self::ShutdownResponse),
+            10 => Ok(Self::Error),
+            20 => Ok(Self::RequestTakeWhile),
+            s => Err(anyhow!("Invalid command: {}", s)),
+        }
+    }
 }
 
 pub fn ckb_cursor_direction_to_idb(x: crate::CursorDirection) -> idb::CursorDirection {
@@ -97,7 +126,7 @@ pub fn idb_cursor_direction_to_ckb(x: idb::CursorDirection) -> crate::CursorDire
 use anyhow::anyhow;
 
 pub fn write_command_with_payload<T: Serialize>(
-    cmd: impl ToPrimitive,
+    cmd: i32,
     data: T,
     i32arr: &Int32Array,
     u8arr: &Uint8Array,
@@ -108,7 +137,7 @@ pub fn write_command_with_payload<T: Serialize>(
     u8arr
         .subarray(8, 8 + result_json.len() as u32)
         .copy_from(result_json.as_bytes());
-    i32arr.set_index(0, cmd.to_i32().unwrap());
+    i32arr.set_index(0, cmd);
     Atomics::notify(i32arr, 0).map_err(|e| anyhow!("Failed to notify: {e:?}"))?;
     Ok(())
 }

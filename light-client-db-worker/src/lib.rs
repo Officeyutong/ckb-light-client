@@ -13,8 +13,6 @@ use light_client_db_common::{
     DbCommandRequest, DbCommandResponse, InputCommand, OutputCommand, KV,
 };
 use log::debug;
-use num_traits::FromPrimitive;
-use num_traits::ToPrimitive;
 use serde::Deserialize;
 use serde_json::json;
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
@@ -363,7 +361,7 @@ async fn wait_for_command(
         }
     }
 
-    InputCommand::from_i32(state_arr.get_index(0)).with_context(|| anyhow!("Bad command"))
+    InputCommand::try_from(state_arr.get_index(0)).with_context(|| anyhow!("Bad command"))
 }
 
 async fn open_database(store_name: impl AsRef<str>) -> anyhow::Result<Database> {
@@ -411,7 +409,7 @@ pub async fn main_loop() {
             .await
             .expect("Unable to wait for command");
         // Clean it to avoid infinite loop
-        input_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+        input_i32_arr.set_index(0, InputCommand::Waiting as i32);
         match cmd {
             InputCommand::OpenDatabase => {
                 let store_name =
@@ -420,7 +418,7 @@ pub async fn main_loop() {
                     Ok(o) => {
                         db = Some((o, store_name));
                         write_command_with_payload(
-                            OutputCommand::OpenDatabaseResponse,
+                            OutputCommand::OpenDatabaseResponse as i32,
                             json!(true),
                             &output_i32_arr,
                             &output_u8_arr,
@@ -428,7 +426,7 @@ pub async fn main_loop() {
                         .unwrap();
                     }
                     Err(err) => write_command_with_payload(
-                        OutputCommand::Error,
+                        OutputCommand::Error as i32,
                         json!(format!("{:?}", err)),
                         &output_i32_arr,
                         &output_u8_arr,
@@ -445,10 +443,10 @@ pub async fn main_loop() {
                     let input_i32_arr = input_i32_arr.clone();
                     let input_u8_arr = input_u8_arr.clone();
                     async move {
-                        input_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+                        input_i32_arr.set_index(0, InputCommand::Waiting as i32);
                         debug!("Invoking request take while with args {:?}", buf);
                         write_command_with_payload(
-                            OutputCommand::RequestTakeWhile,
+                            OutputCommand::RequestTakeWhile as i32,
                             buf,
                             &output_i32_arr,
                             &output_u8_arr,
@@ -462,7 +460,7 @@ pub async fn main_loop() {
                         let result =
                             read_command_payload::<bool>(&input_i32_arr, &input_u8_arr).unwrap();
                         debug!("Received take while result {}", result);
-                        input_i32_arr.set_index(0, InputCommand::Waiting.to_i32().unwrap());
+                        input_i32_arr.set_index(0, InputCommand::Waiting as i32);
                         result
                     }
                 })
@@ -470,14 +468,14 @@ pub async fn main_loop() {
                 debug!("db command result: {:?}", result);
                 match result {
                     Ok(o) => write_command_with_payload(
-                        OutputCommand::DbResponse,
+                        OutputCommand::DbResponse as i32,
                         &o,
                         &output_i32_arr,
                         &output_u8_arr,
                     )
                     .unwrap(),
                     Err(e) => write_command_with_payload(
-                        OutputCommand::Error,
+                        OutputCommand::Error as i32,
                         json!(format!("{:?}", e)),
                         &output_i32_arr,
                         &output_u8_arr,
