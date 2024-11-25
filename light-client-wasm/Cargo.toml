@@ -22,14 +22,15 @@ log = "0.4"
 wasm-logger = "0.2"
 serde-wasm-bindgen = "0.6.5"
 
-ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-async-runtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-resource = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-network = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-async-runtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-stop-handler = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-app-config = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
 
 
 getrandom = { version = "0.2", features = ["js"] }

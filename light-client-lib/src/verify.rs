@@ -21,8 +21,6 @@ use ckb_verification::{
     TimeRelativeTransactionVerifier,
 };
 
-#[cfg(target_arch = "wasm32")]
-use crate::storage::{StorageWithChainData, TmpDB};
 
 /// Light client can only verify non-cellbase transaction,
 /// can not reuse the `ContextualTransactionVerifier` in ckb_verification crate which is used to verify cellbase also.
@@ -177,60 +175,6 @@ where
         resolved_cell_deps,
         resolved_dep_groups,
     })
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn generate_temporary_db(
-    swc: &StorageWithChainData,
-    transaction: TransactionView,
-) -> Result<TmpDB, OutPointError> {
-    let mut cells = HashMap::new();
-    let mut headers = HashMap::new();
-    let mut outpoints = HashSet::new();
-
-    for hash in transaction.header_deps_iter() {
-        if let Some(header) = swc
-            .storage
-            .get_header(&hash)
-            .or_else(|| swc.peers.find_header_in_proved_state(&hash))
-        {
-            headers.insert(hash, header);
-        }
-    }
-    for out_point in transaction.input_pts_iter() {
-        if !outpoints.insert(out_point.clone()) {
-            continue;
-        }
-        let meta = swc.storage().cell(&out_point, true);
-
-        cells.insert(out_point, meta);
-    }
-
-    for cell_dep in transaction.cell_deps_iter() {
-        if cell_dep.dep_type() == DepType::DepGroup.into() {
-            let outpoint = cell_dep.out_point();
-            if let CellStatus::Live(dep_group) = swc.storage().cell(&outpoint, true) {
-                let data = dep_group
-                    .mem_cell_data
-                    .as_ref()
-                    .expect("Load cell meta must with data");
-                let sub_out_points = parse_dep_group_data(data)
-                    .map_err(|_| OutPointError::InvalidDepGroup(outpoint.clone()))?;
-
-                for sub_out_point in sub_out_points.into_iter() {
-                    let meta = swc.storage().cell(&sub_out_point, true);
-                    cells.insert(sub_out_point, meta);
-                }
-                cells.insert(outpoint, CellStatus::Live(dep_group));
-            }
-        } else {
-            cells.insert(
-                cell_dep.out_point(),
-                swc.storage().cell(&cell_dep.out_point(), false),
-            );
-        }
-    }
-    Ok(TmpDB { cells, headers })
 }
 
 fn parse_dep_group_data(slice: &[u8]) -> Result<OutPointVec, String> {

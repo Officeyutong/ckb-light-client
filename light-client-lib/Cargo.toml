@@ -12,19 +12,19 @@ repository = "https://github.com/nervosnetwork/ckb-light-client"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ckb-app-config = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-constant = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-error = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-script = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-verification = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-hash = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-app-config = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-constant = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-network = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-error = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-script = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-traits = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-resource = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-verification = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-hash = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
 
 log = "0.4.14"
 path-clean = "0.1.0"
@@ -64,11 +64,11 @@ serde_json = "1.0.133"
 console_error_panic_hook = { version = "0.1.7" }
 
 [dev-dependencies]
-ckb-shared = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-chain = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-tx-pool = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-store = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c", features = [
+ckb-shared = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-chain = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-tx-pool = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-store = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48", features = [
     "enable_faketime",
 ] }
 tempfile = "3.0"

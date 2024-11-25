@@ -1,8 +1,11 @@
 mod utils;
 
-use std::sync::{
-    atomic::{AtomicU8, Ordering},
-    Arc, RwLock,
+use std::{
+    str::FromStr,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc, RwLock,
+    },
 };
 
 use ckb_light_client_lib::{
@@ -21,7 +24,7 @@ use ckb_light_client_lib::{
         LAST_STATE_KEY,
     },
     types::RunEnv,
-    verify::{generate_temporary_db, verify_tx},
+    verify::verify_tx,
 };
 use wasm_bindgen::prelude::*;
 
@@ -67,12 +70,14 @@ fn change_status(flag: u8) {
 }
 
 #[wasm_bindgen]
-pub fn light_client(net_flag: String) -> Result<(), JsValue> {
+pub async fn light_client(net_flag: String, log_level: String) -> Result<(), JsValue> {
     if !status(0b0) {
         return Err(JsValue::from_str("Can't start twice"));
     }
     utils::set_panic_hook();
-    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
+    wasm_logger::init(wasm_logger::Config::new(
+        log::Level::from_str(&log_level).expect("Bad log level"),
+    ));
 
     let mut config = match net_flag.as_str() {
         "testnet" => TESTNET_CONFIG.parse::<RunEnv>().unwrap(),
@@ -323,13 +328,11 @@ pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
     let tx = tx.into_view();
 
     let swc = STORAGE_WITH_DATA.get().unwrap();
-    let tmpdb =
-        generate_temporary_db(swc, tx.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let consensus = CONSENSUS.get().unwrap();
 
     let cycles = verify_tx(
         tx.clone(),
-        &tmpdb,
+        swc,
         Arc::clone(consensus),
         &swc.storage().get_last_state().1.into_view(),
     )
@@ -1134,13 +1137,11 @@ pub fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
     let tx = tx.into_view();
 
     let swc = STORAGE_WITH_DATA.get().unwrap();
-    let tmpdb =
-        generate_temporary_db(swc, tx.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let consensus = CONSENSUS.get().unwrap();
 
     let cycles = verify_tx(
         tx.clone(),
-        &tmpdb,
+        swc,
         Arc::clone(consensus),
         &swc.storage().get_last_state().1.into_view(),
     )

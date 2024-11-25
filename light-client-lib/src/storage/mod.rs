@@ -4,6 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use ckb_traits::{
     CellDataProvider, ExtensionProvider, HeaderFields, HeaderFieldsProvider, HeaderProvider,
 };
+use ckb_types::core::cell::CellMeta;
 #[cfg(not(target_arch = "wasm32"))]
 use ckb_types::core::cell::CellMeta;
 use ckb_types::{
@@ -150,22 +151,42 @@ impl StorageWithChainData {
     }
 }
 
-#[derive(Clone)]
-pub struct TmpDB {
-    pub(crate) cells: HashMap<OutPoint, CellStatus>,
-    pub(crate) headers: HashMap<Byte32, HeaderView>,
-}
-
-impl CellProvider for TmpDB {
-    fn cell(&self, out_point: &OutPoint, _eager_load: bool) -> CellStatus {
-        self.cells
-            .get(out_point)
-            .cloned()
-            .unwrap_or(CellStatus::Unknown)
+impl CellProvider for StorageWithChainData {
+    fn cell(&self, out_point: &OutPoint, eager_load: bool) -> CellStatus {
+        match self.storage.cell(out_point, eager_load) {
+            CellStatus::Live(cell_meta) => CellStatus::Live(cell_meta),
+            _ => {
+                if let Some((tx, _, _)) = self
+                    .pending_txs
+                    .read()
+                    .expect("poisoned")
+                    .get(&out_point.tx_hash())
+                {
+                    if let Some(cell_output) = tx.raw().outputs().get(out_point.index().unpack()) {
+                        let output_data = tx
+                            .raw()
+                            .outputs_data()
+                            .get(out_point.index().unpack())
+                            .expect("output_data's index should be same as output")
+                            .raw_data();
+                        let output_data_data_hash = CellOutput::calc_data_hash(&output_data);
+                        return CellStatus::Live(CellMeta {
+                            out_point: out_point.clone(),
+                            cell_output,
+                            transaction_info: None,
+                            data_bytes: output_data.len() as u64,
+                            mem_cell_data: Some(output_data),
+                            mem_cell_data_hash: Some(output_data_data_hash),
+                        });
+                    }
+                }
+                CellStatus::Unknown
+            }
+        }
     }
 }
 
-impl CellDataProvider for TmpDB {
+impl CellDataProvider for StorageWithChainData {
     fn get_cell_data(&self, _out_point: &OutPoint) -> Option<Bytes> {
         unreachable!()
     }
@@ -174,13 +195,15 @@ impl CellDataProvider for TmpDB {
         unreachable!()
     }
 }
-impl HeaderProvider for TmpDB {
+impl HeaderProvider for StorageWithChainData {
     fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
-        self.headers.get(hash).cloned()
+        self.storage
+            .get_header(hash)
+            .or_else(|| self.peers.find_header_in_proved_state(hash))
     }
 }
 
-impl HeaderFieldsProvider for TmpDB {
+impl HeaderFieldsProvider for StorageWithChainData {
     fn get_header_fields(&self, hash: &Byte32) -> Option<HeaderFields> {
         self.get_header(hash).map(|header| HeaderFields {
             hash: header.hash(),
@@ -192,9 +215,24 @@ impl HeaderFieldsProvider for TmpDB {
     }
 }
 
-impl ExtensionProvider for TmpDB {
-    fn get_block_extension(&self, _hash: &packed::Byte32) -> Option<packed::Bytes> {
-        unimplemented!()
+impl ExtensionProvider for StorageWithChainData {
+    fn get_block_extension(&self, hash: &packed::Byte32) -> Option<packed::Bytes> {
+        self.storage
+            .get(Key::BlockHash(hash).into_vec())
+            .map(|v| {
+                v.map(|v| {
+                    if v.len() > Header::TOTAL_SIZE {
+                        Some(
+                            packed::Bytes::from_slice(&v[Header::TOTAL_SIZE..])
+                                .expect("stored block extension"),
+                        )
+                    } else {
+                        None
+                    }
+                })
+            })
+            .expect("db get should be ok")
+            .flatten()
     }
 }
 
