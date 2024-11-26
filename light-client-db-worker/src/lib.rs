@@ -52,7 +52,6 @@ pub async fn collect_iterator<F>(
 where
     F: Fn(&[u8]) -> bool,
 {
-    debug!("Entering collect iterator");
     let mut iter = open_iterator(store, start_key_bound, order)
         .await
         .map_err(|e| anyhow!("Failed to open iterator: {e:?}"))?;
@@ -62,7 +61,6 @@ where
     let mut skip_index = 0;
 
     if iter.key().is_err() {
-        debug!("eraly return {}", line!());
         return Ok(res);
     }
 
@@ -79,31 +77,19 @@ where
             res.push(raw_kv);
         }
     } else {
-        debug!("eraly return {}", line!());
         return Ok(res);
     }
-    debug!("At {}", line!());
-    while match iter.next(None).await {
-        Ok(_) => true,
-        Err(e) => {
-            debug!("Cursor advance failed: {:?}", e);
-            false
-        }
-    } {
-        debug!("loop {}", line!());
+    while iter.next(None).await.is_ok() {
         if iter.key().is_err() {
-            debug!("eraly return {}", line!());
             return Ok(res);
         }
 
         if res.len() >= limit {
-            debug!("eraly return {}", line!());
             return Ok(res);
         }
 
         let key = iter.key().unwrap();
         if key.is_none() {
-            debug!("eraly return {}", line!());
             return Ok(res);
         }
 
@@ -119,11 +105,9 @@ where
                 res.push(raw_kv);
             }
         } else {
-            debug!("eraly return {}", line!());
             return Ok(res);
         }
     }
-    debug!("At {}", line!());
     Ok(res)
 }
 
@@ -225,13 +209,10 @@ where
         | DbCommandRequest::Delete { .. }
         | DbCommandRequest::TakeWhileBenchmark { .. } => TransactionMode::ReadWrite,
     };
-    let mut tran = db
+    let tran = db
         .transaction(&[&store_name], tx_mode)
         .map_err(|e| anyhow!("Failed to create transaction: {:?}", e))?;
 
-    tran.on_complete(|evt| {
-        info!("Tx done!: {:?}", evt);
-    });
     let store = tran
         .object_store(&store_name)
         .map_err(|e| anyhow!("Unable to find store {}: {}", store_name, e))?;
@@ -326,12 +307,7 @@ where
             }
         }
     };
-    debug!("At {}", line!());
-    // assert_eq!(TransactionResult::Committed, );
-    let tx_result = tran.await.unwrap();
-    if tx_result != TransactionResult::Committed {
-        panic!("Transaction failed");
-    }
+    assert_eq!(TransactionResult::Committed, tran.await.unwrap());
     debug!("Command result={:?}", result);
     Ok(result)
 }
@@ -471,7 +447,7 @@ pub async fn main_loop(log_level: &str) {
                         &output_u8_arr,
                     )
                     .unwrap();
-
+                    // Sync wait here, so transaction of IndexedDB won't be commited (it will be commited once control flow was returned from sync call stack)
                     wait_for_command_sync(&input_i32_arr, InputCommand::Waiting).unwrap();
 
                     let result =
@@ -503,4 +479,5 @@ pub async fn main_loop(log_level: &str) {
             InputCommand::Waiting | InputCommand::ResponseTakeWhile => unreachable!(),
         }
     }
+    info!("Db worker main loop exited");
 }

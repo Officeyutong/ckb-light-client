@@ -8,7 +8,7 @@ onmessage = async (evt) => {
         wasmModule = await import(data.entryJsPath);
         await wasmModule.default({ module_or_path: data.wasmModulePath });
         wasmModule.set_shared_array(data.inputBuffer, data.outputBuffer);
-        await wasmModule.light_client(data.netName, "debug");
+        await wasmModule.light_client(data.netName, "info");
         self.postMessage({});
         return;
     }
