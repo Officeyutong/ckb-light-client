@@ -9,5 +9,5 @@ self.onmessage = async (evt) => {
     await wasmModule.default({ module_or_path: data.wasmModulePath });
     wasmModule.set_shared_array(data.inputBuffer, data.outputBuffer);
     self.postMessage({});
-    await wasmModule.main_loop();
+    await wasmModule.main_loop("debug");
 }

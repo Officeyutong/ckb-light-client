@@ -1,10 +1,10 @@
 use std::cell::RefCell;
-use std::future::Future;
+use std::str::FromStr;
 
 use anyhow::{anyhow, Context};
 use idb::{
     CursorDirection, Database, DatabaseEvent, Factory, IndexParams, KeyPath, KeyRange,
-    ManagedCursor, ObjectStore, ObjectStoreParams, TransactionMode,
+    ManagedCursor, ObjectStore, ObjectStoreParams, TransactionMode, TransactionResult,
 };
 use light_client_db_common::{
     ckb_cursor_direction_to_idb, read_command_payload, write_command_with_payload,
@@ -12,9 +12,8 @@ use light_client_db_common::{
 use light_client_db_common::{
     DbCommandRequest, DbCommandResponse, InputCommand, OutputCommand, KV,
 };
-use log::debug;
+use log::{debug, info};
 use serde::Deserialize;
-use serde_json::json;
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::{Atomics, Int32Array, Promise, SharedArrayBuffer, Uint8Array};
@@ -42,7 +41,7 @@ async fn open_iterator(
         .into_managed())
 }
 
-pub async fn collect_iterator<R, F>(
+pub async fn collect_iterator<F>(
     store: &ObjectStore,
     start_key_bound: &[u8],
     order: CursorDirection,
@@ -51,8 +50,7 @@ pub async fn collect_iterator<R, F>(
     skip: usize,
 ) -> anyhow::Result<Vec<KV>>
 where
-    R: Future<Output = bool>,
-    F: Fn(Vec<u8>) -> R,
+    F: Fn(&[u8]) -> bool,
 {
     debug!("Entering collect iterator");
     let mut iter = open_iterator(store, start_key_bound, order)
@@ -75,7 +73,7 @@ where
     )
     .unwrap();
 
-    if take_while(raw_kv.key.clone()).await {
+    if take_while(&raw_kv.key) {
         skip_index += 1;
         if skip_index > skip {
             res.push(raw_kv);
@@ -85,7 +83,13 @@ where
         return Ok(res);
     }
     debug!("At {}", line!());
-    while iter.next(None).await.is_ok() {
+    while match iter.next(None).await {
+        Ok(_) => true,
+        Err(e) => {
+            debug!("Cursor advance failed: {:?}", e);
+            false
+        }
+    } {
         debug!("loop {}", line!());
         if iter.key().is_err() {
             debug!("eraly return {}", line!());
@@ -109,7 +113,7 @@ where
                 .unwrap(),
         )
         .unwrap();
-        if take_while(raw_kv.key.clone()).await {
+        if take_while(&raw_kv.key) {
             skip_index += 1;
             if skip_index > skip {
                 res.push(raw_kv);
@@ -123,7 +127,7 @@ where
     Ok(res)
 }
 
-async fn collect_iterator_keys<R, F>(
+async fn collect_iterator_keys<F>(
     store: &ObjectStore,
     start_key_bound: &[u8],
     order: CursorDirection,
@@ -132,8 +136,7 @@ async fn collect_iterator_keys<R, F>(
     skip: usize,
 ) -> anyhow::Result<Vec<Vec<u8>>>
 where
-    R: Future<Output = bool>,
-    F: Fn(Vec<u8>) -> R,
+    F: Fn(&[u8]) -> bool,
 {
     let mut iter = open_iterator(store, start_key_bound, order)
         .await
@@ -153,7 +156,7 @@ where
     )
     .unwrap();
 
-    if take_while(raw_key.clone()).await {
+    if take_while(&raw_key) {
         skip_index += 1;
         if skip_index > skip {
             res.push(raw_key);
@@ -177,7 +180,7 @@ where
         }
 
         let raw_key = serde_wasm_bindgen::from_value::<Vec<u8>>(key.unwrap()).unwrap();
-        if take_while(raw_key.clone()).await {
+        if take_while(&raw_key) {
             skip_index += 1;
             if skip_index > skip {
                 res.push(raw_key);
@@ -195,8 +198,6 @@ thread_local! {
 #[wasm_bindgen]
 pub fn set_shared_array(input: JsValue, output: JsValue) {
     console_error_panic_hook::set_once();
-    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
-
     INPUT_BUFFER.with(|v| {
         *v.borrow_mut() = Some(input.dyn_into().unwrap());
     });
@@ -205,31 +206,36 @@ pub fn set_shared_array(input: JsValue, output: JsValue) {
     });
 }
 
-async fn handle_db_command<R, F>(
+async fn handle_db_command<F>(
     db: &Database,
     store_name: &str,
     cmd: DbCommandRequest,
     invoke_take_while: F,
 ) -> anyhow::Result<DbCommandResponse>
 where
-    R: Future<Output = bool>,
-    F: Fn(Vec<u8>) -> R,
+    F: Fn(&[u8]) -> bool,
 {
     debug!("Handle command: {:?}", cmd);
     let tx_mode = match cmd {
-        DbCommandRequest::Read { .. }
-        | DbCommandRequest::Iterator { .. }
-        | DbCommandRequest::IteratorKey { .. } => TransactionMode::ReadOnly,
+        DbCommandRequest::Iterator { .. } | DbCommandRequest::IteratorKey { .. } => {
+            TransactionMode::ReadOnly
+        }
+        DbCommandRequest::Read { .. } => TransactionMode::ReadOnly,
         DbCommandRequest::Put { .. }
         | DbCommandRequest::Delete { .. }
         | DbCommandRequest::TakeWhileBenchmark { .. } => TransactionMode::ReadWrite,
     };
-    let tran = db
+    let mut tran = db
         .transaction(&[&store_name], tx_mode)
         .map_err(|e| anyhow!("Failed to create transaction: {:?}", e))?;
+
+    tran.on_complete(|evt| {
+        info!("Tx done!: {:?}", evt);
+    });
     let store = tran
         .object_store(&store_name)
         .map_err(|e| anyhow!("Unable to find store {}: {}", store_name, e))?;
+
     let result = match cmd {
         DbCommandRequest::Read { keys } => {
             let mut res = Vec::new();
@@ -313,7 +319,7 @@ where
         DbCommandRequest::TakeWhileBenchmark { test_count } => {
             let start = web_time::Instant::now();
             for _ in 0..test_count {
-                invoke_take_while(vec![1u8; 64]);
+                invoke_take_while(&vec![1u8; 64]);
             }
             DbCommandResponse::TakeWhileBenchmark {
                 duration_in_ns: start.elapsed().as_nanos() as usize,
@@ -321,7 +327,11 @@ where
         }
     };
     debug!("At {}", line!());
-    // assert_eq!(TransactionResult::Committed, tran.await.unwrap());
+    // assert_eq!(TransactionResult::Committed, );
+    let tx_result = tran.await.unwrap();
+    if tx_result != TransactionResult::Committed {
+        panic!("Transaction failed");
+    }
     debug!("Command result={:?}", result);
     Ok(result)
 }
@@ -332,6 +342,16 @@ struct WaitAsyncResponse {
     value: JsValue,
     #[serde(rename = "async")]
     async_: bool,
+}
+
+fn wait_for_command_sync(
+    state_arr: &Int32Array,
+    holding_command: InputCommand,
+) -> anyhow::Result<InputCommand> {
+    Atomics::wait(state_arr, 0, holding_command as i32)
+        .map_err(|e| anyhow!("Failed to call wait async: {:?}", e))?;
+
+    InputCommand::try_from(state_arr.get_index(0)).with_context(|| anyhow!("Bad command"))
 }
 
 async fn wait_for_command(
@@ -390,7 +410,11 @@ async fn open_database(store_name: impl AsRef<str>) -> anyhow::Result<Database> 
 }
 
 #[wasm_bindgen]
-pub async fn main_loop() {
+pub async fn main_loop(log_level: &str) {
+    wasm_logger::init(wasm_logger::Config::new(
+        log::Level::from_str(log_level).expect("Invalid log level"),
+    ));
+
     let (input_i32_arr, input_u8_arr) = INPUT_BUFFER.with(|x| {
         let binding = x.borrow();
         let buf = binding.as_ref().unwrap();
@@ -419,7 +443,7 @@ pub async fn main_loop() {
                         db = Some((o, store_name));
                         write_command_with_payload(
                             OutputCommand::OpenDatabaseResponse as i32,
-                            json!(true),
+                            true,
                             &output_i32_arr,
                             &output_u8_arr,
                         )
@@ -427,7 +451,7 @@ pub async fn main_loop() {
                     }
                     Err(err) => write_command_with_payload(
                         OutputCommand::Error as i32,
-                        json!(format!("{:?}", err)),
+                        format!("{:?}", err),
                         &output_i32_arr,
                         &output_u8_arr,
                     )
@@ -438,31 +462,23 @@ pub async fn main_loop() {
                 let db_cmd = read_command_payload(&input_i32_arr, &input_u8_arr).unwrap();
                 let (db, store_name) = db.as_ref().expect("Database not opened yet");
                 let result = handle_db_command(db, store_name, db_cmd, |buf| {
-                    let output_i32_arr = output_i32_arr.clone();
-                    let output_u8_arr = output_u8_arr.clone();
-                    let input_i32_arr = input_i32_arr.clone();
-                    let input_u8_arr = input_u8_arr.clone();
-                    async move {
-                        input_i32_arr.set_index(0, InputCommand::Waiting as i32);
-                        debug!("Invoking request take while with args {:?}", buf);
-                        write_command_with_payload(
-                            OutputCommand::RequestTakeWhile as i32,
-                            buf,
-                            &output_i32_arr,
-                            &output_u8_arr,
-                        )
-                        .unwrap();
+                    input_i32_arr.set_index(0, InputCommand::Waiting as i32);
+                    debug!("Invoking request take while with args {:?}", buf);
+                    write_command_with_payload(
+                        OutputCommand::RequestTakeWhile as i32,
+                        buf,
+                        &output_i32_arr,
+                        &output_u8_arr,
+                    )
+                    .unwrap();
 
-                        wait_for_command(&input_i32_arr, InputCommand::Waiting)
-                            .await
-                            .unwrap();
+                    wait_for_command_sync(&input_i32_arr, InputCommand::Waiting).unwrap();
 
-                        let result =
-                            read_command_payload::<bool>(&input_i32_arr, &input_u8_arr).unwrap();
-                        debug!("Received take while result {}", result);
-                        input_i32_arr.set_index(0, InputCommand::Waiting as i32);
-                        result
-                    }
+                    let result =
+                        read_command_payload::<bool>(&input_i32_arr, &input_u8_arr).unwrap();
+                    debug!("Received take while result {}", result);
+                    input_i32_arr.set_index(0, InputCommand::Waiting as i32);
+                    result
                 })
                 .await;
                 debug!("db command result: {:?}", result);
@@ -476,7 +492,7 @@ pub async fn main_loop() {
                     .unwrap(),
                     Err(e) => write_command_with_payload(
                         OutputCommand::Error as i32,
-                        json!(format!("{:?}", e)),
+                        format!("{:?}", e),
                         &output_i32_arr,
                         &output_u8_arr,
                     )

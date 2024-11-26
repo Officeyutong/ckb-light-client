@@ -1,8 +1,7 @@
 use anyhow::Context;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use web_sys::js_sys::{Atomics, Int32Array, Uint8Array};
-
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct KV {
     pub key: Vec<u8>,
     pub value: Vec<u8>,
@@ -16,7 +15,6 @@ pub enum CursorDirection {
     PrevUnique,
 }
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
 pub enum DbCommandResponse {
     Read { values: Vec<Option<Vec<u8>>> },
     Put,
@@ -27,7 +25,6 @@ pub enum DbCommandResponse {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-#[serde(tag = "type")]
 pub enum DbCommandRequest {
     Read {
         keys: Vec<Vec<u8>>,
@@ -131,17 +128,17 @@ pub fn write_command_with_payload<T: Serialize>(
     i32arr: &Int32Array,
     u8arr: &Uint8Array,
 ) -> anyhow::Result<()> {
-    let result_json =
-        serde_json::to_string(&data).with_context(|| anyhow!("Failed to serialize result"))?;
-    i32arr.set_index(1, result_json.len() as i32);
+    let result_buf = bincode::serialize(&data)
+        .with_context(|| anyhow!("Failed to serialize command payload"))?;
+
+    i32arr.set_index(1, result_buf.len() as i32);
     u8arr
-        .subarray(8, 8 + result_json.len() as u32)
-        .copy_from(result_json.as_bytes());
+        .subarray(8, 8 + result_buf.len() as u32)
+        .copy_from(&result_buf);
     i32arr.set_index(0, cmd);
     Atomics::notify(i32arr, 0).map_err(|e| anyhow!("Failed to notify: {e:?}"))?;
     Ok(())
 }
-
 pub fn read_command_payload<T: DeserializeOwned>(
     i32arr: &Int32Array,
     u8arr: &Uint8Array,
@@ -151,6 +148,6 @@ pub fn read_command_payload<T: DeserializeOwned>(
     u8arr.subarray(8, 8 + length).copy_to(&mut buf);
 
     let result =
-        serde_json::from_slice::<T>(&buf).with_context(|| anyhow!("Failed to decode command"))?;
+        bincode::deserialize::<T>(&buf).with_context(|| anyhow!("Failed to decode command"))?;
     Ok(result)
 }

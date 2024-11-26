@@ -32,7 +32,6 @@ use light_client_db_common::{
 };
 
 use log::{debug, info};
-use serde_json::json;
 
 use crate::{
     error::{Error, Result},
@@ -197,7 +196,7 @@ impl CommunicationArrays {
                     );
                     write_command_with_payload(
                         InputCommand::ResponseTakeWhile as i32,
-                        json!(ok),
+                        ok,
                         &input_i32_arr,
                         &input_u8_arr,
                     )?;
@@ -231,7 +230,7 @@ pub fn open_database(store_name: &str) {
     output_i32_arr.set_index(0, InputCommand::Waiting as i32);
     write_command_with_payload(
         InputCommand::OpenDatabase as i32,
-        json!(store_name),
+        store_name,
         &input_i32_arr,
         &input_u8_arr,
     )
@@ -288,8 +287,8 @@ impl Storage {
         } = &self.comm_arrays;
         output_i32_arr.set_index(0, InputCommand::Waiting as i32);
         write_command_with_payload(
-            InputCommand::Shutdown  as i32,
-            json!({}),
+            InputCommand::Shutdown as i32,
+            (),
             &input_i32_arr,
             &input_u8_arr,
         )
