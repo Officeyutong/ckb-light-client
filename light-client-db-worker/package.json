@@ -1,5 +1,5 @@
 {
-    "name": "light-client-wasm",
+    "name": "light-client-db-worker",
     "scripts": {
         "build-debug": "webpack --mode=development",
         "build": "webpack --mode=production",

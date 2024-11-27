@@ -4,20 +4,20 @@ const webpack = require('webpack');
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 
 module.exports = {
-    entry: './lightclient.worker.js',
+    entry: './db.worker.js',
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: 'index.js',
         library: {
             type: "umd",
-            name: "light-client-wasm"
+            name: "light-client-db-worker"
         }
     },
     plugins: [
         new HtmlWebpackPlugin(),
         new WasmPackPlugin({
             crateDirectory: path.resolve(__dirname, "."),
-            outName: "light-client-wasm"
+            outName: "light-client-db-worker"
         }),
     ],
     experiments: {

@@ -5,8 +5,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.css">
     <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
     <script type="module">
-        const dbWorker = new Worker("./light-client-db-worker/db.js", { type: "module" });
-        const lightClientWorker = new Worker("./light-client-wasm/lightclient.js", { type: "module" });
+        const dbWorker = new Worker("./light-client-db-worker/dist/index.js");
+        const lightClientWorker = new Worker("./light-client-wasm/dist/index.js");
         const inputBuffer = new SharedArrayBuffer(4 + 4 + 50 * (1 << 20));
         const outputBuffer = new SharedArrayBuffer(4 + 4 + 50 * (1 << 20));
         window.initWorkers = async () => {
@@ -14,15 +14,13 @@
             dbWorker.postMessage({
                 inputBuffer,
                 outputBuffer,
-                wasmModulePath: "./pkg/light_client_db_worker_bg.wasm",
-                entryJsPath: "./pkg/light_client_db_worker.js"
+                logLevel: "info"
             });
             lightClientWorker.postMessage({
                 inputBuffer,
                 outputBuffer,
-                wasmModulePath: "./pkg/light_client_wasm_bg.wasm",
-                entryJsPath: "./pkg/light_client_wasm.js",
-                netName: "dev"
+                netName: "dev",
+                logLevel: "info"
             });
 
             await new Promise((res, rej) => {
