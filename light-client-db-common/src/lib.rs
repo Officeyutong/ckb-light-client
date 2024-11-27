@@ -25,7 +25,6 @@ pub enum DbCommandResponse {
     Delete,
     Iterator { kvs: Vec<KV> },
     IteratorKey { keys: Vec<Vec<u8>> },
-    TakeWhileBenchmark { duration_in_ns: usize },
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -63,9 +62,6 @@ pub enum DbCommandRequest {
         order: CursorDirection,
         limit: usize,
         skip: usize,
-    },
-    TakeWhileBenchmark {
-        test_count: usize,
     },
 }
 #[repr(i32)]

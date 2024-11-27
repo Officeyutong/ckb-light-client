@@ -68,10 +68,6 @@ enum CommandRequestWithTakeWhile {
         limit: usize,
         skip: usize,
     },
-    TakeWhileBenchmark {
-        take_while: Box<dyn Fn(&[u8]) -> bool + Send + 'static>,
-        test_count: usize,
-    },
 }
 
 thread_local! {
@@ -79,6 +75,9 @@ thread_local! {
     static OUTPUT_BUFFER: RefCell<Option<SharedArrayBuffer>> = const { RefCell::new(None) };
 }
 #[wasm_bindgen]
+/// Set `SharedArrayBuffer` used for communicating with light client worker. This must be called before executing `main_loop`
+/// input - The buffer used for sending data from light client worker to db worker
+/// output - The buffer used for sending data from db worker to light client worker
 pub fn set_shared_array(input: JsValue, output: JsValue) {
     console_error_panic_hook::set_once();
     INPUT_BUFFER.with(|v| {
@@ -90,14 +89,16 @@ pub fn set_shared_array(input: JsValue, output: JsValue) {
 }
 
 #[derive(Clone)]
-struct CommunicationArrays {
+/// The channel used for communicating with db worker
+struct CommunicationChannel {
     input_i32_arr: Int32Array,
     input_u8_arr: Uint8Array,
     output_i32_arr: Int32Array,
     output_u8_arr: Uint8Array,
 }
 
-impl CommunicationArrays {
+impl CommunicationChannel {
+    /// Create a [`crate::storage::db::browser::CommunicationChannel`] from global stored buffers
     fn prepare_from_global() -> Self {
         let (input_i32_arr, input_u8_arr) = INPUT_BUFFER.with(|x| {
             let binding = x.borrow();
@@ -116,6 +117,43 @@ impl CommunicationArrays {
             output_u8_arr,
         }
     }
+    /// Open the database
+    fn open_database(&self, store_name: &str) {
+        let CommunicationChannel {
+            input_i32_arr,
+            input_u8_arr,
+            output_i32_arr,
+            output_u8_arr,
+        } = &self;
+        output_i32_arr.set_index(0, InputCommand::Waiting as i32);
+        write_command_with_payload(
+            InputCommand::OpenDatabase as i32,
+            store_name,
+            &input_i32_arr,
+            &input_u8_arr,
+        )
+        .with_context(|| anyhow!("Failed to write db command"))
+        .unwrap();
+        Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
+        let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
+        match output_cmd {
+            OutputCommand::OpenDatabaseResponse => {
+                DB_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            OutputCommand::Error => panic!(
+                "{}",
+                read_command_payload::<String>(&output_i32_arr, &output_u8_arr).unwrap()
+            ),
+            OutputCommand::RequestTakeWhile
+            | OutputCommand::Waiting
+            | OutputCommand::DbResponse => {
+                unreachable!()
+            }
+        }
+    }
+
+    /// Executa a database command, retriving the response (or error)
+    /// cmd: The command
     fn dispatch_database_command(
         &self,
         cmd: CommandRequestWithTakeWhile,
@@ -156,15 +194,8 @@ impl CommunicationArrays {
                 },
                 Some(take_while),
             ),
-            CommandRequestWithTakeWhile::TakeWhileBenchmark {
-                take_while,
-                test_count,
-            } => (
-                DbCommandRequest::TakeWhileBenchmark { test_count },
-                Some(take_while),
-            ),
         };
-        let CommunicationArrays {
+        let CommunicationChannel {
             input_i32_arr,
             input_u8_arr,
             output_i32_arr,
@@ -217,71 +248,23 @@ impl CommunicationArrays {
 
 static DB_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-#[wasm_bindgen]
-pub fn open_database(store_name: &str) {
-    let CommunicationArrays {
-        input_i32_arr,
-        input_u8_arr,
-        output_i32_arr,
-        output_u8_arr,
-    } = CommunicationArrays::prepare_from_global();
-    output_i32_arr.set_index(0, InputCommand::Waiting as i32);
-    write_command_with_payload(
-        InputCommand::OpenDatabase as i32,
-        store_name,
-        &input_i32_arr,
-        &input_u8_arr,
-    )
-    .with_context(|| anyhow!("Failed to write db command"))
-    .unwrap();
-    Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
-    let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
-    match output_cmd {
-        OutputCommand::OpenDatabaseResponse => {
-            DB_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
-        }
-        OutputCommand::Error => panic!(
-            "{}",
-            read_command_payload::<String>(&output_i32_arr, &output_u8_arr).unwrap()
-        ),
-        OutputCommand::RequestTakeWhile | OutputCommand::Waiting | OutputCommand::DbResponse => {
-            unreachable!()
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub fn take_while_benchmark(test_count: usize) -> usize {
-    if let DbCommandResponse::TakeWhileBenchmark { duration_in_ns } =
-        CommunicationArrays::prepare_from_global()
-            .dispatch_database_command(CommandRequestWithTakeWhile::TakeWhileBenchmark {
-                take_while: Box::new(|buf| buf.len() == 64),
-                test_count,
-            })
-            .expect("Unable to dispatch command")
-    {
-        duration_in_ns
-    } else {
-        unreachable!()
-    }
-}
-
 #[derive(Clone)]
 pub struct Storage {
-    comm_arrays: CommunicationArrays,
+    channel: CommunicationChannel,
 }
-// Send & Sync should be implemented, since each WebWorker has its own memory space, nothing could be accessed by multiple threads, and nothing could be sended to other threads
+/// Each WebWorker has its own memory space, so objects won't be sended to other workers, neither will them be accessed by multiple workers
+/// It's safe to implement [`std::marker::Send`] + [`std::marker::Sync`] for [`crate::storage::db::browser::Storage`]
 unsafe impl Sync for Storage {}
 unsafe impl Send for Storage {}
 
 impl Storage {
     pub fn shutdown(&self) {
-        let CommunicationArrays {
+        let CommunicationChannel {
             input_i32_arr,
             input_u8_arr,
             output_i32_arr,
             ..
-        } = &self.comm_arrays;
+        } = &self.channel;
         output_i32_arr.set_index(0, InputCommand::Waiting as i32);
         write_command_with_payload(
             InputCommand::Shutdown as i32,
@@ -292,20 +275,19 @@ impl Storage {
         .unwrap();
     }
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        let chan = CommunicationChannel::prepare_from_global();
         if !DB_INITIALIZED.load(std::sync::atomic::Ordering::SeqCst) {
-            open_database(path.as_ref().to_str().unwrap());
+            chan.open_database(path.as_ref().to_str().unwrap());
             DB_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         }
-        Self {
-            comm_arrays: CommunicationArrays::prepare_from_global(),
-        }
+        Self { channel: chan }
     }
 
     fn batch(&self) -> Batch {
         Batch {
             add: vec![],
             delete: vec![],
-            comm_arrays: self.comm_arrays.clone(),
+            comm_arrays: self.channel.clone(),
         }
     }
     fn put<K, V>(&self, key: K, value: V) -> Result<()>
@@ -313,7 +295,7 @@ impl Storage {
         K: AsRef<[u8]>,
         V: AsRef<[u8]>,
     {
-        self.comm_arrays
+        self.channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Put {
                 kvs: vec![KV {
                     key: key.as_ref().to_vec(),
@@ -325,7 +307,7 @@ impl Storage {
     }
     pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<Vec<u8>>> {
         let values = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Read {
                 keys: vec![key.as_ref().to_vec()],
             })
@@ -342,7 +324,7 @@ impl Storage {
         self.get(key)
     }
     fn delete<K: AsRef<[u8]>>(&self, key: K) -> Result<()> {
-        self.comm_arrays
+        self.channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Delete {
                 keys: vec![key.as_ref().to_vec()],
             })
@@ -352,18 +334,19 @@ impl Storage {
     pub fn is_filter_scripts_empty(&self) -> bool {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
 
-        let value = match self.comm_arrays.dispatch_database_command(
-            CommandRequestWithTakeWhile::IteratorKey {
-                start_key_bound: key_prefix.clone(),
-                order: CursorDirection::NextUnique,
-                take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
-                limit: 1,
-                skip: 0,
-            },
-        ) {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
+        let value =
+            match self
+                .channel
+                .dispatch_database_command(CommandRequestWithTakeWhile::IteratorKey {
+                    start_key_bound: key_prefix.clone(),
+                    order: CursorDirection::NextUnique,
+                    take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix)),
+                    limit: 1,
+                    skip: 0,
+                }) {
+                Ok(v) => v,
+                Err(_) => return false,
+            };
 
         if let DbCommandResponse::IteratorKey { keys } = value {
             keys.is_empty()
@@ -375,7 +358,7 @@ impl Storage {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
         let key_prefix_clone = key_prefix.clone();
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix_clone.clone(),
                 order: CursorDirection::NextUnique,
@@ -423,7 +406,7 @@ impl Storage {
 
                 let key_prefix_clone = key_prefix.clone();
                 let remove_keys = self
-                    .comm_arrays
+                    .channel
                     .dispatch_database_command(CommandRequestWithTakeWhile::IteratorKey {
                         start_key_bound: key_prefix_clone.clone(),
                         order: CursorDirection::NextUnique,
@@ -512,7 +495,7 @@ impl Storage {
         let key_prefix = Key::Meta(FILTER_SCRIPTS_KEY).into_vec();
 
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
@@ -547,7 +530,7 @@ impl Storage {
 
         let key_prefix_clone = key_prefix.clone();
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix_clone.clone(),
                 order: CursorDirection::NextUnique,
@@ -585,7 +568,7 @@ impl Storage {
         let mut batch = self.batch();
 
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::IteratorKey {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
@@ -619,7 +602,7 @@ impl Storage {
         let key_prefix_clone = key_prefix.clone();
 
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: iter_from,
                 order: CursorDirection::NextUnique,
@@ -655,7 +638,7 @@ impl Storage {
         let key_prefix = [KeyPrefix::CheckPointIndex as u8];
 
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: start_key,
                 order: CursorDirection::NextUnique,
@@ -679,7 +662,7 @@ impl Storage {
         let mut batch = self.batch();
 
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound: key_prefix.clone(),
                 order: CursorDirection::NextUnique,
@@ -724,7 +707,7 @@ impl Storage {
                 let key_prefix_len = key_prefix.len();
 
                 let value = self
-                    .comm_arrays
+                    .channel
                     .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                         start_key_bound: key_prefix.clone(),
                         order: CursorDirection::PrevUnique,
@@ -877,7 +860,7 @@ impl Storage {
 pub struct Batch {
     add: Vec<KV>,
     delete: Vec<Vec<u8>>,
-    comm_arrays: CommunicationArrays,
+    comm_arrays: CommunicationChannel,
 }
 
 impl Batch {
@@ -940,7 +923,7 @@ impl Storage {
         skip: usize,
     ) -> Vec<KV> {
         let value = self
-            .comm_arrays
+            .channel
             .dispatch_database_command(CommandRequestWithTakeWhile::Iterator {
                 start_key_bound,
                 order,

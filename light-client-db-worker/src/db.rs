@@ -182,9 +182,9 @@ where
             TransactionMode::ReadOnly
         }
         DbCommandRequest::Read { .. } => TransactionMode::ReadOnly,
-        DbCommandRequest::Put { .. }
-        | DbCommandRequest::Delete { .. }
-        | DbCommandRequest::TakeWhileBenchmark { .. } => TransactionMode::ReadWrite,
+        DbCommandRequest::Put { .. } | DbCommandRequest::Delete { .. } => {
+            TransactionMode::ReadWrite
+        }
     };
     let tran = db
         .transaction(&[&store_name], tx_mode)
@@ -272,15 +272,6 @@ where
             .await
             .with_context(|| anyhow!("Failed to collect iterator keys"))?;
             DbCommandResponse::IteratorKey { keys }
-        }
-        DbCommandRequest::TakeWhileBenchmark { test_count } => {
-            let start = web_time::Instant::now();
-            for _ in 0..test_count {
-                invoke_take_while(&vec![1u8; 64]);
-            }
-            DbCommandResponse::TakeWhileBenchmark {
-                duration_in_ns: start.elapsed().as_nanos() as usize,
-            }
         }
     };
     assert_eq!(TransactionResult::Committed, tran.await.unwrap());
