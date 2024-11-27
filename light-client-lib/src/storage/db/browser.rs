@@ -183,9 +183,7 @@ impl CommunicationArrays {
             let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
             output_i32_arr.set_index(0, 0);
             match output_cmd {
-                OutputCommand::OpenDatabaseResponse
-                | OutputCommand::Waiting
-                | OutputCommand::ShutdownResponse => unreachable!(),
+                OutputCommand::OpenDatabaseResponse | OutputCommand::Waiting => unreachable!(),
                 OutputCommand::RequestTakeWhile => {
                     let arg = read_command_payload::<Vec<u8>>(&output_i32_arr, &output_u8_arr)?;
                     let ok = take_while.as_ref().unwrap()(&arg);
@@ -246,10 +244,9 @@ pub fn open_database(store_name: &str) {
             "{}",
             read_command_payload::<String>(&output_i32_arr, &output_u8_arr).unwrap()
         ),
-        OutputCommand::RequestTakeWhile
-        | OutputCommand::Waiting
-        | OutputCommand::DbResponse
-        | OutputCommand::ShutdownResponse => unreachable!(),
+        OutputCommand::RequestTakeWhile | OutputCommand::Waiting | OutputCommand::DbResponse => {
+            unreachable!()
+        }
     }
 }
 

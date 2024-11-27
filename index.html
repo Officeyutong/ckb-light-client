@@ -47,15 +47,6 @@
                 lightClientWorker.onerror = (evt) => rej(evt);
             });
         }
-        window.takeWhileBenchmark = async (count) => {
-            lightClientWorker.postMessage({
-                count
-            });
-            return await new Promise((res, rej) => {
-                lightClientWorker.onmessage = (e) => res(e.data);
-                lightClientWorker.onerror = (evt) => rej(evt);
-            });
-        };
         window.doTest = async () => {
 
 
