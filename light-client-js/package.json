@@ -1,0 +1,24 @@
+{
+  "name": "light-client-js",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.7.2",
+    "webpack": "^5.96.1",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "light-client-db-worker": "file:../light-client-db-worker",
+    "light-client-wasm": "file:../light-client-wasm"
+  },
+  "scripts": {
+    "build-debug": "webpack --mode=development --stats-children",
+    "build": "webpack --mode=production",
+    "serve": "webpack serve"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  }
+}

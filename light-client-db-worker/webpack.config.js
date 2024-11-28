@@ -1,27 +1,46 @@
 const path = require('path');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
-const webpack = require('webpack');
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
-
+const webpack = require("webpack");
 module.exports = {
-    entry: './db.worker.js',
+    entry: './index.ts',
+    target: "webworker",
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: 'index.js',
         library: {
-            type: "umd",
-            name: "light-client-db-worker"
+            type: "module",
         }
     },
     plugins: [
-        new HtmlWebpackPlugin(),
         new WasmPackPlugin({
             crateDirectory: path.resolve(__dirname, "."),
-            outName: "light-client-db-worker"
+            outName: "light-client-db-worker",
+            extraArgs: "--target web"
+        }),
+        new webpack.ProvidePlugin({
+            Buffer: ['buffer', 'Buffer'],
         }),
     ],
-    experiments: {
-        asyncWebAssembly: true
+    module: {
+        rules: [
+            {
+                test: /\.wasm$/,
+                loader: "arraybuffer-loader"
+            },
+            {
+                test: /\.ts$/,
+                use: 'ts-loader',
+                exclude: /node_modules/,
+            },
+        ]
     },
-    mode: "production"
+    experiments: {
+        outputModule: true
+    },
+    mode: "production",
+    resolve: {
+        fallback: {
+            buffer: require.resolve('buffer/'),
+        },
+    },
 };

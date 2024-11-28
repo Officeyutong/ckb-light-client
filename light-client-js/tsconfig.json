@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist/",
+    "noImplicitAny": true,
+    "module": "ES2020",
+    "target": "ES2015",
+    "allowJs": true,
+    "moduleResolution": "node",
+    "mapRoot": "dist",
+    "sourceMap": true,
+    "declaration": true,
+    "declarationDir": "dist",
+    "rootDir": "src",
+    "declarationMap": true,
+    "typeRoots": [
+      "/src"
+    ],
+    "allowSyntheticDefaultImports": true,
+    "lib": [
+      "ES2017",
+      "WebWorker"
+    ]
+  },
+  "exclude": [
+    "webpack.config.js",
+    "dist/**",
+    "node_modules/**"
+  ]
+}
