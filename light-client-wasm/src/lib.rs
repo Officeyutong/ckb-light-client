@@ -450,51 +450,6 @@ pub fn get_peers() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn get_script_example() -> JsValue {
-    let script = serde_json::from_str::<ckb_jsonrpc_types::Script>(
-        r#"
-    {
-       "code_hash": "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8",
-       "hash_type": "type",
-       "args": "0x418ac4485a3dbe8221321b249631cf8491b31fd1"
-     }
-     "#,
-    )
-    .unwrap();
-
-    serde_wasm_bindgen::to_value(&ScriptStatus {
-        script,
-        script_type: ScriptType::Lock,
-        block_number: 0.into(),
-    })
-    .unwrap()
-}
-
-#[wasm_bindgen]
-pub fn get_search_key_example() -> JsValue {
-    let script = serde_json::from_str::<ckb_jsonrpc_types::Script>(
-        r#"
-    {
-       "code_hash": "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8",
-       "hash_type": "type",
-       "args": "0x418ac4485a3dbe8221321b249631cf8491b31fd1"
-     }
-     "#,
-    )
-    .unwrap();
-
-    let key = SearchKey {
-        script,
-        script_type: ScriptType::Lock,
-        filter: None,
-        with_data: None,
-        group_by_transaction: None,
-    };
-
-    serde_wasm_bindgen::to_value(&key).unwrap()
-}
-
-#[wasm_bindgen]
 pub fn set_scripts(
     scripts: Vec<JsValue>,
     command: Option<SetScriptsCommand>,
