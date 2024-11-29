@@ -62,6 +62,9 @@ light-client-db-common = { path = "../light-client-db-common" }
 web-sys = "0.3.72"
 console_error_panic_hook = { version = "0.1.7" }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3.45"
+
 [dev-dependencies]
 ckb-shared = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
 ckb-chain = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }

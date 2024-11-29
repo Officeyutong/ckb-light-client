@@ -26,6 +26,8 @@ use ckb_light_client_lib::{
     types::RunEnv,
     verify::verify_tx,
 };
+use serde::Serialize;
+use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::*;
 
 use ckb_chain_spec::{consensus::Consensus, ChainSpec};
@@ -55,6 +57,8 @@ static STORAGE_WITH_DATA: OnceLock<StorageWithChainData> = OnceLock::new();
 static NET_CONTROL: OnceLock<NetworkController> = OnceLock::new();
 
 static CONSENSUS: OnceLock<Arc<Consensus>> = OnceLock::new();
+
+static SERIALIZER: Serializer = Serializer::new().serialize_large_number_types_as_bigints(true);
 
 /// 0b0 init
 /// 0b1 start
@@ -227,16 +231,15 @@ pub fn get_tip_header() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
-    Ok(serde_wasm_bindgen::to_value(&Into::<
-        ckb_jsonrpc_types::HeaderView,
-    >::into(
+    Ok((&Into::<ckb_jsonrpc_types::HeaderView>::into(
         STORAGE_WITH_DATA
             .get()
             .unwrap()
             .storage()
             .get_tip_header()
             .into_view(),
-    ))?)
+    ))
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -244,16 +247,15 @@ pub fn get_genesis_block() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
-    Ok(serde_wasm_bindgen::to_value(&Into::<
-        ckb_jsonrpc_types::BlockView,
-    >::into(
+    Ok((&Into::<ckb_jsonrpc_types::BlockView>::into(
         STORAGE_WITH_DATA
             .get()
             .unwrap()
             .storage()
             .get_genesis_block()
             .into_view(),
-    ))?)
+    ))
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -266,7 +268,7 @@ pub fn get_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
     let header_view: Option<ckb_jsonrpc_types::HeaderView> =
         swc.storage().get_header(&block_hash.pack()).map(Into::into);
 
-    Ok(serde_wasm_bindgen::to_value(&header_view)?)
+    Ok((&header_view).serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -279,11 +281,10 @@ pub fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
     let swc = STORAGE_WITH_DATA.get().unwrap();
 
     if let Some(value) = swc.storage().get_header(&block_hash.pack()) {
-        return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-            ckb_jsonrpc_types::HeaderView,
-        >::Fetched {
-            data: value.into(),
-        })?);
+        return Ok(
+            (&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetched { data: value.into() })
+                .serialize(&SERIALIZER)?,
+        );
     }
 
     let now = unix_time_as_millis();
@@ -291,30 +292,26 @@ pub fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
         if missing {
             // re-fetch the header
             swc.add_fetch_header(block_hash, now);
-            return Ok(serde_wasm_bindgen::to_value(
-                &FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound,
-            )?);
+            return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound,)
+                .serialize(&SERIALIZER)?);
         } else if first_sent > 0 {
-            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-                ckb_jsonrpc_types::HeaderView,
-            >::Fetching {
+            return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetching {
                 first_sent: first_sent.into(),
-            })?);
+            })
+                .serialize(&SERIALIZER)?);
         } else {
-            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-                ckb_jsonrpc_types::HeaderView,
-            >::Added {
+            return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Added {
                 timestamp: added_ts.into(),
-            })?);
+            })
+                .serialize(&SERIALIZER)?);
         }
     } else {
         swc.add_fetch_header(block_hash, now);
     }
-    Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-        ckb_jsonrpc_types::HeaderView,
-    >::Added {
+    Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Added {
         timestamp: now.into(),
-    })?)
+    })
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -337,11 +334,10 @@ pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
         &swc.storage().get_last_state().1.into_view(),
     )
     .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
-    Ok(serde_wasm_bindgen::to_value(
-        &ckb_jsonrpc_types::EstimateCycles {
-            cycles: cycles.into(),
-        },
-    )?)
+    Ok((&ckb_jsonrpc_types::EstimateCycles {
+        cycles: cycles.into(),
+    },)
+        .serialize(&SERIALIZER)?)
 }
 
 const MAX_ADDRS: usize = 50;
@@ -353,7 +349,7 @@ pub fn local_node_info() -> Result<JsValue, JsValue> {
     }
 
     let network_controller = NET_CONTROL.get().unwrap();
-    Ok(serde_wasm_bindgen::to_value(&LocalNode {
+    Ok((&LocalNode {
         version: network_controller.version().to_owned(),
         node_id: network_controller.node_id(),
         active: network_controller.is_active(),
@@ -375,7 +371,8 @@ pub fn local_node_info() -> Result<JsValue, JsValue> {
             })
             .collect::<Vec<_>>(),
         connections: (network_controller.connected_peers().len() as u64).into(),
-    })?)
+    })
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -446,7 +443,7 @@ pub fn get_peers() -> Result<JsValue, JsValue> {
             }
         })
         .collect();
-    Ok(serde_wasm_bindgen::to_value(&peers)?)
+    Ok((&peers).serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -488,7 +485,7 @@ pub fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
     Ok(scripts
         .into_iter()
         .map(Into::into)
-        .map(|v: ScriptStatus| serde_wasm_bindgen::to_value(&v))
+        .map(|v: ScriptStatus| (&v).serialize(&SERIALIZER))
         .collect::<Result<Vec<_>, _>>()?)
 }
 
@@ -655,10 +652,11 @@ pub fn get_cells(
         });
     }
 
-    Ok(serde_wasm_bindgen::to_value(&Pagination {
+    Ok((&Pagination {
         objects: cells,
         last_cursor: JsonBytes::from_vec(last_key),
-    })?)
+    })
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -829,10 +827,11 @@ pub fn get_transactions(
             }
         }
 
-        Ok(serde_wasm_bindgen::to_value(&Pagination {
+        Ok((&Pagination {
             objects: tx_with_cells.into_iter().map(Tx::Grouped).collect(),
             last_cursor: JsonBytes::from_vec(last_key),
-        })?)
+        })
+            .serialize(&SERIALIZER)?)
     } else {
         let mut last_key = Vec::new();
         let mut txs = Vec::new();
@@ -930,10 +929,11 @@ pub fn get_transactions(
             }))
         }
 
-        Ok(serde_wasm_bindgen::to_value(&Pagination {
+        Ok((&Pagination {
             objects: txs,
             last_cursor: JsonBytes::from_vec(last_key),
-        })?)
+        })
+            .serialize(&SERIALIZER)?)
     }
 }
 
@@ -1075,11 +1075,12 @@ pub fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
         .expect("snapshot get last state should be ok")
         .map(|data| packed::HeaderReader::from_slice_should_be_ok(&data[32..]).to_entity())
         .expect("tip header should be inited");
-    Ok(serde_wasm_bindgen::to_value(&CellsCapacity {
+    Ok((&CellsCapacity {
         capacity: capacity.into(),
         block_hash: tip_header.calc_header_hash().unpack(),
         block_number: tip_header.raw().number().unpack(),
-    })?)
+    })
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -1119,14 +1120,15 @@ pub fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
 
     if let Some((transaction, header)) = swc.storage().get_transaction_with_header(&tx_hash.pack())
     {
-        return Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
+        return Ok((&TransactionWithStatus {
             transaction: Some(transaction.into_view().into()),
             cycles: None,
             tx_status: TxStatus {
                 block_hash: Some(header.into_view().hash().unpack()),
                 status: Status::Committed,
             },
-        })?);
+        })
+            .serialize(&SERIALIZER)?);
     }
 
     if let Some((transaction, cycles, _)) = swc
@@ -1135,24 +1137,26 @@ pub fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
         .expect("pending_txs lock is poisoned")
         .get(&tx_hash.pack())
     {
-        return Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
+        return Ok((&TransactionWithStatus {
             transaction: Some(transaction.into_view().into()),
             cycles: Some(cycles.into()),
             tx_status: TxStatus {
                 block_hash: None,
                 status: Status::Pending,
             },
-        })?);
+        })
+            .serialize(&SERIALIZER)?);
     }
 
-    Ok(serde_wasm_bindgen::to_value(&TransactionWithStatus {
+    Ok((&TransactionWithStatus {
         transaction: None,
         cycles: None,
         tx_status: TxStatus {
             block_hash: None,
             status: Status::Unknown,
         },
-    })?)
+    })
+        .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -1164,9 +1168,7 @@ pub fn fetch_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
     let tws = get_transaction(tx_hash.clone())?;
     let tws: TransactionWithStatus = serde_wasm_bindgen::from_value(tws)?;
     if tws.transaction.is_some() {
-        return Ok(serde_wasm_bindgen::to_value(&FetchStatus::Fetched {
-            data: tws,
-        })?);
+        return Ok((&FetchStatus::Fetched { data: tws }).serialize(&SERIALIZER)?);
     }
     let tx_hash = H256::from_slice(&tx_hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
@@ -1176,30 +1178,25 @@ pub fn fetch_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
         if missing {
             // re-fetch the transaction
             swc.add_fetch_tx(tx_hash, now);
-            return Ok(serde_wasm_bindgen::to_value(
-                &FetchStatus::<TransactionWithStatus>::NotFound,
-            )?);
+            return Ok((&FetchStatus::<TransactionWithStatus>::NotFound,).serialize(&SERIALIZER)?);
         } else if first_sent > 0 {
-            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-                TransactionWithStatus,
-            >::Fetching {
+            return Ok((&FetchStatus::<TransactionWithStatus>::Fetching {
                 first_sent: first_sent.into(),
-            })?);
+            })
+                .serialize(&SERIALIZER)?);
         } else {
-            return Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-                TransactionWithStatus,
-            >::Added {
+            return Ok((&FetchStatus::<TransactionWithStatus>::Added {
                 timestamp: added_ts.into(),
-            })?);
+            })
+                .serialize(&SERIALIZER)?);
         }
     } else {
         swc.add_fetch_tx(tx_hash, now);
     }
-    Ok(serde_wasm_bindgen::to_value(&FetchStatus::<
-        TransactionWithStatus,
-    >::Added {
+    Ok((&FetchStatus::<TransactionWithStatus>::Added {
         timestamp: now.into(),
-    })?)
+    })
+        .serialize(&SERIALIZER)?)
 }
 
 const MAX_PREFIX_SEARCH_SIZE: usize = u16::max_value() as usize;

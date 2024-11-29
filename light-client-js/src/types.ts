@@ -4,13 +4,10 @@ interface WorkerInitializeOptions {
     logLevel: string;
 }
 interface DbWorkerInitializeOptions extends WorkerInitializeOptions {
-
 }
 
 interface LightClientWorkerInitializeOptions extends WorkerInitializeOptions {
-
     netName: string;
-
 };
 
 interface LightClientFunctionCall {
@@ -18,9 +15,16 @@ interface LightClientFunctionCall {
     args: any[];
 };
 
+type FetchHeaderResponse =
+    { status: "fetched"; data: any; } |
+    { status: "fetching"; first_sent: bigint; } |
+    { status: "added"; timestamp: bigint; } |
+    { status: "not_found" };
+
 export type {
     LightClientFunctionCall,
     WorkerInitializeOptions,
     DbWorkerInitializeOptions,
-    LightClientWorkerInitializeOptions
+    LightClientWorkerInitializeOptions,
+    FetchHeaderResponse
 }
