@@ -1,5 +1,8 @@
-import { FetchHeaderResponse } from "./types";
-
+import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core/src/client";
+import { FetchResponse, transformFetchResponse } from "./types";
+import { JsonRpcTransformers } from "@ckb-ccc/core/src/client/jsonRpc/transformers";
+import { Num, numFrom, NumLike, numToHex } from "@ckb-ccc/core/src/num";
+import { Hex, hexFrom, HexLike, TransactionLike } from "@ckb-ccc/core/src/barrel";
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
 /**
  * A LightClient instance
@@ -46,7 +49,7 @@ class LightClient {
             this.lightClientWorker.onerror = (evt) => rej(evt);
         });
     }
-    private async invokeLightClientCommand(name: string, args?: any[]): Promise<any> {
+    private invokeLightClientCommand(name: string, args?: any[]): Promise<any> {
         this.lightClientWorker.postMessage({
             name,
             args: args || []
@@ -80,27 +83,27 @@ class LightClient {
     }
     /**
      * Returns the information about a block header by hash.
-     * @param hash the block hash, in Uint8Array
+     * @param hash the block hash, equal to Vec<u8> in Rust
      * @returns HeaderView
      */
-    async getHeader(hash: Uint8Array): Promise<any> {
-        return await this.invokeLightClientCommand("get_header", [hash]);
+    async getHeader(hash: HexLike): Promise<any> {
+        return await this.invokeLightClientCommand("get_header", [hexFrom(hash)]);
     }
     /**
      * Fetch a header from remote node. If return status is not_found will re-sent fetching request immediately.
-     * @param hash the block hash
+     * @param hash the block hash, equal to Vec<u8> in Rust
      * @returns FetchHeaderResponse
      */
-    async fetchHeader(hash: Uint8Array): Promise<FetchHeaderResponse> {
-        return await this.invokeLightClientCommand("fetch_header", [hash]);
+    async fetchHeader(hash: HexLike): Promise<FetchResponse<any>> {
+        return await this.invokeLightClientCommand("fetch_header", [hexFrom(hash)]);
     }
     /**
      * See https://github.com/nervosnetwork/ckb/tree/develop/rpc#method-estimate_cycles
      * @param tx The transaction
      * @returns Estimate cycles
      */
-    async estimateCycles(tx: any): Promise<any> {
-        return await this.invokeLightClientCommand("estimate_cycles", [tx]);
+    async estimateCycles(tx: TransactionLike): Promise<Num> {
+        return (await this.invokeLightClientCommand("estimate_cycles", [JsonRpcTransformers.transactionFrom(tx)]) as any).cycles;
     }
     /**
      * Returns the local node information.
@@ -137,8 +140,18 @@ class LightClient {
      * @param limit 
      * @param afterCursor 
      */
-    async getCells(searchKey: any, order: any, limit: number, afterCursor?: Uint8Array): Promise<any> {
-        return await this.invokeLightClientCommand("get_cells", [searchKey, order, limit, afterCursor]);
+    async getCells(
+        searchKey: ClientIndexerSearchKeyLike,
+        order?: "asc" | "desc",
+        limit?: NumLike,
+        afterCursor?: string
+    ): Promise<ClientFindCellsResponse> {
+        return JsonRpcTransformers.findCellsResponseTo(await this.invokeLightClientCommand("get_cells", [
+            JsonRpcTransformers.indexerSearchKeyFrom(searchKey),
+            order ?? "asc",
+            numToHex(limit ?? 10),
+            afterCursor
+        ]));
     }
     /**
      * See https://github.com/nervosnetwork/ckb-indexer#get_transactions
@@ -148,42 +161,57 @@ class LightClient {
      * @param afterCursor 
      * @returns 
      */
-    async getTransactions(searchKey: any, order: any, limit: number, afterCursor?: Uint8Array): Promise<any> {
-        return await this.invokeLightClientCommand("get_transactions", [searchKey, order, limit, afterCursor]);
+    async getTransactions(
+        searchKey: ClientIndexerSearchKeyTransactionLike,
+        order?: "asc" | "desc",
+        limit?: NumLike,
+        afterCursor?: string
+    ): Promise<ClientFindTransactionsResponse | ClientFindTransactionsGroupedResponse> {
+        return JsonRpcTransformers.findTransactionsResponseTo(
+            await this.invokeLightClientCommand(
+                "get_transactions",
+                [
+                    JsonRpcTransformers.indexerSearchKeyTransactionFrom(searchKey),
+                    order ?? "asc",
+                    numToHex(limit ?? 10),
+                    afterCursor
+                ]
+            )
+        );
     }
     /**
      * See https://github.com/nervosnetwork/ckb-indexer#get_cells_capacity
      * @param searchKey 
      * @returns 
      */
-    async getCellsCapacity(searchKey: any): Promise<any> {
-        return await this.invokeLightClientCommand("get_cells_capacity", [searchKey]);
+    async getCellsCapacity(searchKey: ClientIndexerSearchKeyLike): Promise<Num> {
+        return numFrom(((await this.invokeLightClientCommand("get_cells_capacity", [JsonRpcTransformers.indexerSearchKeyFrom(searchKey)])) as any).capacity);
     }
     /**
      * Submits a new transaction and broadcast it to network peers
      * @param tx Transaction
      * @returns H256
      */
-    async sendTransaction(tx: any): Promise<Uint8Array> {
-        return await this.invokeLightClientCommand("send_transaction", [tx]);
+    async sendTransaction(tx: TransactionLike): Promise<Hex> {
+        return hexFrom(await this.invokeLightClientCommand("send_transaction", [JsonRpcTransformers.transactionFrom(tx)]));
     }
     /**
      * Returns the information about a transaction by hash, the block header is also returned.
      * @param txHash the transaction hash
      * @returns 
      */
-    async getTransaction(txHash: Uint8Array): Promise<any> {
-        return await this.invokeLightClientCommand("get_transaction", [txHash]);
+    async getTransaction(txHash: HexLike): Promise<ClientTransactionResponse> {
+        return JsonRpcTransformers.transactionResponseTo(await this.invokeLightClientCommand("get_transaction", [hexFrom(txHash)]));
     }
     /**
      * Fetch a transaction from remote node. If return status is not_found will re-sent fetching request immediately.
      * @param txHash the transaction hash
      * @returns 
      */
-    async fetchTransaction(txHash: Uint8Array): Promise<any> {
-        return await this.invokeLightClientCommand("fetch_transaction", [txHash]);
+    async fetchTransaction(txHash: HexLike): Promise<FetchResponse<ClientTransactionResponse>> {
+        return transformFetchResponse<any, ClientTransactionResponse>(await this.invokeLightClientCommand("fetch_transaction", [hexFrom(txHash)]), JsonRpcTransformers.transactionResponseTo);
     }
-    
+
 }
 
 export default LightClient;

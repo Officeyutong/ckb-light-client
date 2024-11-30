@@ -259,11 +259,11 @@ pub fn get_genesis_block() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn get_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn get_header(hash: &str) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
-    let block_hash = H256::from_slice(&hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let block_hash = H256::from_str(&hash[2..]).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
     let header_view: Option<ckb_jsonrpc_types::HeaderView> =
         swc.storage().get_header(&block_hash.pack()).map(Into::into);
@@ -272,12 +272,12 @@ pub fn get_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn fetch_header(hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn fetch_header(hash: &str) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
 
-    let block_hash = H256::from_slice(&hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let block_hash = H256::from_str(&hash[2..]).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
 
     if let Some(value) = swc.storage().get_header(&block_hash.pack()) {
@@ -1111,11 +1111,11 @@ pub fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
-    let tx_hash = H256::from_slice(&tx_hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let tx_hash = H256::from_str(&tx_hash[2..]).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
 
     if let Some((transaction, header)) = swc.storage().get_transaction_with_header(&tx_hash.pack())
@@ -1160,17 +1160,17 @@ pub fn get_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn fetch_transaction(tx_hash: Vec<u8>) -> Result<JsValue, JsValue> {
+pub fn fetch_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
 
-    let tws = get_transaction(tx_hash.clone())?;
+    let tws = get_transaction(tx_hash)?;
     let tws: TransactionWithStatus = serde_wasm_bindgen::from_value(tws)?;
     if tws.transaction.is_some() {
         return Ok((&FetchStatus::Fetched { data: tws }).serialize(&SERIALIZER)?);
     }
-    let tx_hash = H256::from_slice(&tx_hash).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let tx_hash = H256::from_str(&tx_hash[2..]).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
 
     let now = unix_time_as_millis();
