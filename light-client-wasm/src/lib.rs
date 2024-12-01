@@ -58,7 +58,9 @@ static NET_CONTROL: OnceLock<NetworkController> = OnceLock::new();
 
 static CONSENSUS: OnceLock<Arc<Consensus>> = OnceLock::new();
 
-static SERIALIZER: Serializer = Serializer::new().serialize_large_number_types_as_bigints(true);
+static SERIALIZER: Serializer = Serializer::new()
+    .serialize_large_number_types_as_bigints(true)
+    .serialize_maps_as_objects(true);
 
 /// 0b0 init
 /// 0b1 start
@@ -218,7 +220,7 @@ pub async fn light_client(net_flag: String, log_level: String) -> Result<(), JsV
 }
 
 #[wasm_bindgen]
-pub async fn stop() {
+pub fn stop() {
     broadcast_exit_signals();
     STORAGE_WITH_DATA.get().unwrap().storage().shutdown();
     change_status(0b10);

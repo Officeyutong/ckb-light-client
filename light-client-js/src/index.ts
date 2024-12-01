@@ -1,8 +1,9 @@
-import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core/src/client";
-import { FetchResponse, transformFetchResponse } from "./types";
-import { JsonRpcTransformers } from "@ckb-ccc/core/src/client/jsonRpc/transformers";
-import { Num, numFrom, NumLike, numToHex } from "@ckb-ccc/core/src/num";
-import { Hex, hexFrom, HexLike, TransactionLike } from "@ckb-ccc/core/src/barrel";
+import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core/client";
+import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, transformFetchResponse } from "./types";
+import { JsonRpcTransformers } from "@ckb-ccc/core/client/jsonRpc/transformers";
+import { Num, numFrom, NumLike, numToHex } from "@ckb-ccc/core/num";
+import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, TransactionLike } from "@ckb-ccc/core/barrel";
+import { JsonRpcBlockHeader } from "@ckb-ccc/core/advancedBarrel";
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
 /**
  * A LightClient instance
@@ -28,17 +29,17 @@ class LightClient {
     /**
      * Start the light client.
      */
-    async start() {
+    async start(logLevel: "debug" | "info" = "info") {
         this.dbWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
-            logLevel: "info"
+            logLevel: logLevel
         });
         this.lightClientWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
             netName: "dev",
-            logLevel: "info"
+            logLevel: logLevel
         });
         await new Promise<void>((res, rej) => {
             this.dbWorker.onmessage = () => res();
@@ -71,31 +72,31 @@ class LightClient {
      * Returns the header with the highest block number in the canonical chain
      * @returns HeaderView
      */
-    async getTipHeader(): Promise<any> {
-        return await this.invokeLightClientCommand("get_tip_header");
+    async getTipHeader(): Promise<ClientBlockHeader> {
+        return JsonRpcTransformers.blockHeaderTo(await this.invokeLightClientCommand("get_tip_header"));
     }
     /**
      * Returns the genesis block
      * @returns BlockView
      */
-    async getGenesisBlock(): Promise<any> {
-        return await this.invokeLightClientCommand("get_genesis_block");
+    async getGenesisBlock(): Promise<ClientBlock> {
+        return JsonRpcTransformers.blockTo(await this.invokeLightClientCommand("get_genesis_block"));
     }
     /**
      * Returns the information about a block header by hash.
      * @param hash the block hash, equal to Vec<u8> in Rust
      * @returns HeaderView
      */
-    async getHeader(hash: HexLike): Promise<any> {
-        return await this.invokeLightClientCommand("get_header", [hexFrom(hash)]);
+    async getHeader(hash: HexLike): Promise<ClientBlockHeader> {
+        return JsonRpcTransformers.blockHeaderTo(await this.invokeLightClientCommand("get_header", [hexFrom(hash)]));
     }
     /**
      * Fetch a header from remote node. If return status is not_found will re-sent fetching request immediately.
      * @param hash the block hash, equal to Vec<u8> in Rust
      * @returns FetchHeaderResponse
      */
-    async fetchHeader(hash: HexLike): Promise<FetchResponse<any>> {
-        return await this.invokeLightClientCommand("fetch_header", [hexFrom(hash)]);
+    async fetchHeader(hash: HexLike): Promise<FetchResponse<ClientBlockHeader>> {
+        return transformFetchResponse(await this.invokeLightClientCommand("fetch_header", [hexFrom(hash)]), (arg: JsonRpcBlockHeader) => JsonRpcTransformers.blockHeaderTo(arg));
     }
     /**
      * See https://github.com/nervosnetwork/ckb/tree/develop/rpc#method-estimate_cycles
@@ -109,29 +110,29 @@ class LightClient {
      * Returns the local node information.
      * @returns LocalNode
      */
-    async localNodeInfo(): Promise<any> {
-        return await this.invokeLightClientCommand("local_node_info");
+    async localNodeInfo(): Promise<LocalNode> {
+        return localNodeTo(await this.invokeLightClientCommand("local_node_info") as JsonRpcLocalNode);
     }
     /**
      * Returns the connected peers' information.
      * @returns 
      */
-    async getPeers(): Promise<any> {
-        return await this.invokeLightClientCommand("get_peers");
+    async getPeers(): Promise<RemoteNode[]> {
+        return (await this.invokeLightClientCommand("get_peers") as JsonRpcRemoteNode[]).map(x => remoteNodeTo(x));
     }
     /**
      * Set some scripts to filter
      * @param scripts Array of script status
      * @param command An optional enum parameter to control the behavior of set_scripts
      */
-    async setScripts(scripts: any, command: any): Promise<void> {
-        await this.invokeLightClientCommand("set_scripts", [scripts, command]);
+    async setScripts(scripts: ScriptStatus[], command?: "all" | "partial" | "delete"): Promise<void> {
+        await this.invokeLightClientCommand("set_scripts", [scripts.map(x => scriptStatusFrom(x)), command]);
     }
     /**
      * Get filter scripts status
      */
-    async getScripts(): Promise<any[]> {
-        return await this.invokeLightClientCommand("get_scripts");
+    async getScripts(): Promise<ScriptStatus[]> {
+        return (await this.invokeLightClientCommand("get_scripts") as JsonRpcScriptStatus[]).map(x => scriptStatusTo(x));
     }
     /**
      * See https://github.com/nervosnetwork/ckb-indexer#get_cells

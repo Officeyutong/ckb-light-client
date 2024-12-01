@@ -1,11 +1,9 @@
-{
+ {
   "name": "light-client-js",
   "version": "1.0.0",
   "main": "dist/index.js",
   "license": "MIT",
   "devDependencies": {
-    "@ckb-ccc/ccc": "^0.0.16-alpha.7",
-    "@ckb-ccc/core": "^0.1.0-alpha.5",
     "ts-loader": "^9.5.1",
     "typescript": "^5.7.2",
     "webpack": "^5.96.1",
@@ -13,7 +11,9 @@
   },
   "dependencies": {
     "light-client-db-worker": "file:../light-client-db-worker",
-    "light-client-wasm": "file:../light-client-wasm"
+    "light-client-wasm": "file:../light-client-wasm",
+    "stream-browserify": "^3.0.0",
+    "@ckb-ccc/core": "https://gitpkg.vercel.app/Officeyutong/ccc/packages/core?a1b8a02"
   },
   "scripts": {
     "build-debug": "webpack --mode=development --stats-children",
