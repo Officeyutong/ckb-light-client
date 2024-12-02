@@ -1,6 +1,5 @@
 import { JsonRpcScript, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
-import { Script } from "@ckb-ccc/core/barrel";
-import { Num } from "@ckb-ccc/core/num";
+import { Num, Script } from "@ckb-ccc/core/barrel";
 
 interface WorkerInitializeOptions {
     inputBuffer: SharedArrayBuffer;
