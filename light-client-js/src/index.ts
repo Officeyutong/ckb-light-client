@@ -1,5 +1,5 @@
 import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core/client";
-import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, transformFetchResponse } from "./types";
+import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, transformFetchResponse } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
@@ -26,8 +26,10 @@ class LightClient {
     }
     /**
      * Start the light client.
+     * @param networkFlag Network flag for light-client-wasm. If you use DevNet, spec and config are necessary.
+     * @param logLevel Log Level for light-client-db-worker and light-client-wasm
      */
-    async start(logLevel: "debug" | "info" = "info") {
+    async start(networkFlag: NetworkFlag, logLevel: "debug" | "info" = "info") {
         this.dbWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
@@ -36,7 +38,7 @@ class LightClient {
         this.lightClientWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
-            netName: "dev",
+            networkFlag,
             logLevel: logLevel
         });
         await new Promise<void>((res, rej) => {

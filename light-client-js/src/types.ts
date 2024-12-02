@@ -10,7 +10,7 @@ interface DbWorkerInitializeOptions extends WorkerInitializeOptions {
 }
 
 interface LightClientWorkerInitializeOptions extends WorkerInitializeOptions {
-    netName: string;
+    networkFlag: NetworkFlag;
 };
 
 interface LightClientFunctionCall {
@@ -150,6 +150,7 @@ export function localNodeTo(input: JsonRpcLocalNode): LocalNode {
         version: input.version
     })
 }
+type NetworkFlag = { type: "MainNet" } | { type: "TestNet" } | { type: "DevNet"; spec: string; config: string; };
 
 export type {
     LightClientFunctionCall,
@@ -162,5 +163,6 @@ export type {
     JsonRpcRemoteNode,
     RemoteNode,
     LocalNode,
-    JsonRpcLocalNode
+    JsonRpcLocalNode,
+    NetworkFlag
 }

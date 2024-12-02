@@ -26,7 +26,7 @@ use ckb_light_client_lib::{
     types::RunEnv,
     verify::verify_tx,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::*;
 
@@ -46,11 +46,6 @@ use std::sync::OnceLock;
 static MAINNET_CONFIG: &'static str = include_str!("../../config/mainnet.toml");
 
 static TESTNET_CONFIG: &'static str = include_str!("../../config/testnet.toml");
-
-static DEV_CONFIG: &'static str = include_str!("../../config/dev.toml");
-
-static DEV_SOURCE: &'static str =
-    include_str!("/root/.local/share/offckb-nodejs/devnet/specs/dev.toml");
 
 static STORAGE_WITH_DATA: OnceLock<StorageWithChainData> = OnceLock::new();
 
@@ -74,9 +69,16 @@ fn status(flag: u8) -> bool {
 fn change_status(flag: u8) {
     START_FLAG.store(flag, Ordering::SeqCst);
 }
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum NetworkFlag {
+    MainNet,
+    TestNet,
+    DevNet { spec: String, config: String },
+}
 
 #[wasm_bindgen]
-pub async fn light_client(net_flag: String, log_level: String) -> Result<(), JsValue> {
+pub async fn light_client(net_flag: JsValue, log_level: String) -> Result<(), JsValue> {
     if !status(0b0) {
         return Err(JsValue::from_str("Can't start twice"));
     }
@@ -84,20 +86,19 @@ pub async fn light_client(net_flag: String, log_level: String) -> Result<(), JsV
     wasm_logger::init(wasm_logger::Config::new(
         log::Level::from_str(&log_level).expect("Bad log level"),
     ));
+    let network_flag: NetworkFlag = serde_wasm_bindgen::from_value(net_flag)?;
 
-    let mut config = match net_flag.as_str() {
-        "testnet" => TESTNET_CONFIG.parse::<RunEnv>().unwrap(),
-        "mainnet" => MAINNET_CONFIG.parse::<RunEnv>().unwrap(),
-        "dev" => DEV_CONFIG.parse::<RunEnv>().unwrap(),
-        _ => panic!("unsupport flag"),
+    let mut config = match &network_flag {
+        NetworkFlag::TestNet => TESTNET_CONFIG.parse::<RunEnv>().unwrap(),
+        NetworkFlag::MainNet => MAINNET_CONFIG.parse::<RunEnv>().unwrap(),
+        NetworkFlag::DevNet { config, .. } => config.parse::<RunEnv>().unwrap(),
     };
 
     let storage = Storage::new(&config.store.path);
-    let chain_spec = ChainSpec::load_from(&match config.chain.as_str() {
-        "mainnet" => Resource::bundled("specs/mainnet.toml".to_string()),
-        "testnet" => Resource::bundled("specs/testnet.toml".to_string()),
-        "dev" => Resource::raw(DEV_SOURCE.to_string()),
-        _ => panic!("unsupport flag"),
+    let chain_spec = ChainSpec::load_from(&match network_flag {
+        NetworkFlag::MainNet => Resource::bundled("specs/mainnet.toml".to_string()),
+        NetworkFlag::TestNet => Resource::bundled("specs/testnet.toml".to_string()),
+        NetworkFlag::DevNet { spec, .. } => Resource::raw(spec),
     })
     .expect("load spec should be OK");
 

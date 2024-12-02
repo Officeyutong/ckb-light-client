@@ -6,13 +6,23 @@
     <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
     <script type="module">
         import LightClient from "./light-client-js/dist/index.js";
+
+        const devConfig = await (await fetch("./dev-config.toml")).text();
+        const devSpec = await (await fetch("./dev-spec.toml")).text();
+
         console.log(LightClient);
         window.initWorkers = async () => {
             $("#init-button").addClass("loading");
             const client = new LightClient();
             window.client = client;
-            await client.start();
-        
+            await client.start(
+                {
+                    type: "DevNet",
+                    config: devConfig,
+                    spec: devSpec
+                }
+            );
+
             $("#init-button").removeClass("loading");
         };
     </script>
