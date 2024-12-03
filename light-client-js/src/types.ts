@@ -1,6 +1,8 @@
+import { numFrom } from "@ckb-ccc/core";
+import { Hex } from "@ckb-ccc/core";
 import { ScriptLike } from "@ckb-ccc/core";
-import { JsonRpcScript, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
-import { Num, Script } from "@ckb-ccc/core/barrel";
+import { JsonRpcScript, JsonRpcTransaction, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
+import { Num, Script, Transaction } from "@ckb-ccc/core/barrel";
 
 interface WorkerInitializeOptions {
     inputBuffer: SharedArrayBuffer;
@@ -167,6 +169,74 @@ export function cccOrderToLightClientWasmOrder(input: "asc" | "desc"): LightClie
     else return LightClientWasmOrder.Desc;
 }
 
+type LightClientCellType = "input" | "output";
+
+interface LightClientTxWithCell {
+    transaction: JsonRpcTransaction;
+    block_number: Hex;
+    tx_index: number;
+    io_index: number;
+    io_type: LightClientCellType;
+}
+
+interface LightClientTxWithCells {
+    transaction: JsonRpcTransaction;
+    block_number: Hex;
+    tx_index: number;
+    cells: Array<[LightClientCellType, number]>;
+}
+
+interface TxWithCell {
+    transaction: Transaction;
+    blockNumber: Num;
+    txIndex: Num;
+    ioIndex: Num;
+    ioType: LightClientCellType;
+}
+interface TxWithCells {
+    transaction: Transaction;
+    blockNumber: Num;
+    txIndex: Num;
+    cells: Array<[LightClientCellType, number]>
+}
+
+interface LightClientPagination<T> {
+    objects: T[];
+    last_cursor: string;
+
+}
+
+interface GetTransactionsResponse<T> {
+    transactions: T[];
+    lastCursor: string;
+}
+
+export function lightClientGetTransactionsResultTo(input: LightClientPagination<LightClientTxWithCell> | LightClientPagination<LightClientTxWithCells>): GetTransactionsResponse<TxWithCell> | GetTransactionsResponse<TxWithCells> {
+    if ("io_index" in input.objects[0]) {
+        return ({
+            lastCursor: input.last_cursor,
+            transactions: (input as LightClientPagination<LightClientTxWithCell>).objects.map((item) => ({
+                transaction: JsonRpcTransformers.transactionTo(item.transaction),
+                blockNumber: numFrom(item.block_number),
+                txIndex: numFrom(item.tx_index),
+                ioIndex: numFrom(item.io_index),
+                ioType: item.io_type
+            }))
+        }) as GetTransactionsResponse<TxWithCell>
+    } else {
+        return ({
+            lastCursor: input.last_cursor,
+            transactions: (input as LightClientPagination<LightClientTxWithCells>).objects.map((item) => ({
+                transaction: JsonRpcTransformers.transactionTo(item.transaction),
+                blockNumber: numFrom(item.block_number),
+                txIndex: numFrom(item.tx_index),
+                cells: item.cells
+            }))
+        }) as GetTransactionsResponse<TxWithCells>
+    }
+
+
+}
 export type {
     LightClientFunctionCall,
     WorkerInitializeOptions,
@@ -179,5 +249,10 @@ export type {
     RemoteNode,
     LocalNode,
     JsonRpcLocalNode,
-    NetworkFlag
+    NetworkFlag,
+    LightClientTxWithCell,
+    LightClientTxWithCells,
+    TxWithCell,
+    TxWithCells,
+    GetTransactionsResponse,
 }

@@ -244,8 +244,9 @@ impl FilterProtocol {
                 // Status::ok()
             }
             packed::BlockFilterMessageUnionReader::BlockFilters(reader) => {
-                components::BlockFiltersProcess::new(reader, self, nc, peer).execute()
-                .await
+                components::BlockFiltersProcess::new(reader, self, nc, peer)
+                    .execute()
+                    .await
                 // Status::ok()
             }
             _ => StatusCode::UnexpectedProtocolMessage.into(),

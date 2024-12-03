@@ -21,7 +21,6 @@ use ckb_verification::{
     TimeRelativeTransactionVerifier,
 };
 
-
 /// Light client can only verify non-cellbase transaction,
 /// can not reuse the `ContextualTransactionVerifier` in ckb_verification crate which is used to verify cellbase also.
 pub struct ContextualTransactionVerifier<T>

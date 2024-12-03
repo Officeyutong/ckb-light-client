@@ -1,5 +1,5 @@
 import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core";
-import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientWasmSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder } from "./types";
+import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientWasmSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
@@ -167,18 +167,16 @@ class LightClient {
         order?: "asc" | "desc",
         limit?: NumLike,
         afterCursor?: string
-    ): Promise<ClientFindTransactionsResponse | ClientFindTransactionsGroupedResponse> {
-        return JsonRpcTransformers.findTransactionsResponseTo(
-            await this.invokeLightClientCommand(
-                "get_transactions",
-                [
-                    JsonRpcTransformers.indexerSearchKeyTransactionFrom(searchKey),
-                    cccOrderToLightClientWasmOrder(order ?? "asc"),
-                    Number(numFrom(numToHex(limit ?? 10))),
-                    afterCursor
-                ]
-            )
-        );
+    ): Promise<GetTransactionsResponse<TxWithCell> | GetTransactionsResponse<TxWithCells>> {
+        return lightClientGetTransactionsResultTo(await this.invokeLightClientCommand(
+            "get_transactions",
+            [
+                JsonRpcTransformers.indexerSearchKeyTransactionFrom(searchKey),
+                cccOrderToLightClientWasmOrder(order ?? "asc"),
+                Number(numFrom(numToHex(limit ?? 10))),
+                afterCursor
+            ]
+        ));
     }
     /**
      * See https://github.com/nervosnetwork/ckb-indexer#get_cells_capacity
