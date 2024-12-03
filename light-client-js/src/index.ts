@@ -1,5 +1,5 @@
 import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core";
-import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientWasmSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo } from "./types";
+import { FetchResponse, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
@@ -111,28 +111,28 @@ class LightClient {
      * @returns LocalNode
      */
     async localNodeInfo(): Promise<LocalNode> {
-        return localNodeTo(await this.invokeLightClientCommand("local_node_info") as JsonRpcLocalNode);
+        return localNodeTo(await this.invokeLightClientCommand("local_node_info") as LightClientLocalNode);
     }
     /**
      * Returns the connected peers' information.
      * @returns 
      */
     async getPeers(): Promise<RemoteNode[]> {
-        return (await this.invokeLightClientCommand("get_peers") as JsonRpcRemoteNode[]).map(x => remoteNodeTo(x));
+        return (await this.invokeLightClientCommand("get_peers") as LightClientRemoteNode[]).map(x => remoteNodeTo(x));
     }
     /**
      * Set some scripts to filter
      * @param scripts Array of script status
      * @param command An optional enum parameter to control the behavior of set_scripts
      */
-    async setScripts(scripts: ScriptStatus[], command?: LightClientWasmSetScriptsCommand): Promise<void> {
+    async setScripts(scripts: ScriptStatus[], command?: LightClientSetScriptsCommand): Promise<void> {
         await this.invokeLightClientCommand("set_scripts", [scripts.map(x => scriptStatusFrom(x)), command]);
     }
     /**
      * Get filter scripts status
      */
     async getScripts(): Promise<ScriptStatus[]> {
-        return (await this.invokeLightClientCommand("get_scripts") as JsonRpcScriptStatus[]).map(x => scriptStatusTo(x));
+        return (await this.invokeLightClientCommand("get_scripts") as LightClientScriptStatus[]).map(x => scriptStatusTo(x));
     }
     /**
      * See https://github.com/nervosnetwork/ckb-indexer#get_cells

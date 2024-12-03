@@ -1,8 +1,9 @@
 import { numFrom } from "@ckb-ccc/core";
 import { Hex } from "@ckb-ccc/core";
+import { ClientBlockHeader } from "@ckb-ccc/core";
 import { ScriptLike } from "@ckb-ccc/core";
-import { JsonRpcScript, JsonRpcTransaction, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
-import { Num, Script, Transaction } from "@ckb-ccc/core/barrel";
+import { JsonRpcBlockHeader, JsonRpcScript, JsonRpcTransaction, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
+import { Num, Transaction } from "@ckb-ccc/core/barrel";
 
 interface WorkerInitializeOptions {
     inputBuffer: SharedArrayBuffer;
@@ -36,7 +37,7 @@ export function transformFetchResponse<A, B>(input: FetchResponse<A>, fn: (arg: 
 
 type JsonRpcScriptType = "lock" | "type";
 
-interface JsonRpcScriptStatus {
+interface LightClientScriptStatus {
     script: JsonRpcScript;
     script_type: JsonRpcScriptType;
     block_number: Num;
@@ -48,7 +49,7 @@ interface ScriptStatus {
     blockNumber: Num
 }
 
-export function scriptStatusTo(input: JsonRpcScriptStatus): ScriptStatus {
+export function scriptStatusTo(input: LightClientScriptStatus): ScriptStatus {
     return ({
         blockNumber: input.block_number,
         script: JsonRpcTransformers.scriptTo(input.script),
@@ -56,7 +57,7 @@ export function scriptStatusTo(input: JsonRpcScriptStatus): ScriptStatus {
     })
 }
 
-export function scriptStatusFrom(input: ScriptStatus): JsonRpcScriptStatus {
+export function scriptStatusFrom(input: ScriptStatus): LightClientScriptStatus {
     return ({
         block_number: input.blockNumber,
         script: JsonRpcTransformers.scriptFrom(input.script),
@@ -74,12 +75,29 @@ interface RemoteNodeProtocol {
     version: string;
 }
 
-interface JsonRpcRemoteNode {
+interface LightClientPeerSyncState {
+    requested_best_known_header?: JsonRpcBlockHeader;
+    proved_best_known_header?: JsonRpcBlockHeader;
+}
+
+interface PeerSyncState {
+    requestedBestKnownHeader?: ClientBlockHeader;
+    provedBestKnownHeader?: ClientBlockHeader;
+}
+
+export function peerSyncStateTo(input: LightClientPeerSyncState): PeerSyncState {
+    return {
+        requestedBestKnownHeader: input.requested_best_known_header && JsonRpcTransformers.blockHeaderTo(input.requested_best_known_header),
+        provedBestKnownHeader: input.proved_best_known_header && JsonRpcTransformers.blockHeaderTo(input.proved_best_known_header),
+    };
+}
+
+interface LightClientRemoteNode {
     version: string;
     node_id: string;
     addresses: NodeAddress[];
     connected_duration: Num;
-    sync_state?: any;
+    sync_state?: LightClientPeerSyncState;
     protocols: RemoteNodeProtocol[];
 
 }
@@ -89,22 +107,22 @@ interface RemoteNode {
     nodeId: string;
     addresses: NodeAddress[];
     connestedDuration: Num;
-    syncState?: any;
+    syncState?: PeerSyncState;
     protocols: RemoteNodeProtocol[];
 }
 
-export function remoteNodeTo(input: JsonRpcRemoteNode): RemoteNode {
+export function remoteNodeTo(input: LightClientRemoteNode): RemoteNode {
     return ({
         addresses: input.addresses,
         connestedDuration: input.connected_duration,
         nodeId: input.node_id,
         protocols: input.protocols,
         version: input.version,
-        syncState: input.sync_state
+        syncState: input.sync_state && peerSyncStateTo(input.sync_state)
     })
 }
 
-interface JsonRpcLocalNodeProtocol {
+interface LightClientLocalNodeProtocol {
     id: Num;
     name: string;
     support_version: string[];
@@ -117,7 +135,7 @@ interface LocalNodeProtocol {
     supportVersion: string[];
 }
 
-export function localNodeProtocolTo(input: JsonRpcLocalNodeProtocol): LocalNodeProtocol {
+export function localNodeProtocolTo(input: LightClientLocalNodeProtocol): LocalNodeProtocol {
     return ({
         id: input.id,
         name: input.name,
@@ -125,13 +143,13 @@ export function localNodeProtocolTo(input: JsonRpcLocalNodeProtocol): LocalNodeP
     })
 }
 
-interface JsonRpcLocalNode {
+interface LightClientLocalNode {
     version: string;
     node_id: string;
     active: boolean;
     addresses: NodeAddress[];
-    protocols: JsonRpcLocalNodeProtocol[];
-    connections: bigint;
+    protocols: LightClientLocalNodeProtocol[];
+    connections: Num;
 }
 
 interface LocalNode {
@@ -143,7 +161,7 @@ interface LocalNode {
     connections: bigint;
 }
 
-export function localNodeTo(input: JsonRpcLocalNode): LocalNode {
+export function localNodeTo(input: LightClientLocalNode): LocalNode {
     return ({
         nodeId: input.node_id,
         protocols: input.protocols.map(x => localNodeProtocolTo(x)),
@@ -154,19 +172,19 @@ export function localNodeTo(input: JsonRpcLocalNode): LocalNode {
     })
 }
 type NetworkFlag = { type: "MainNet" } | { type: "TestNet" } | { type: "DevNet"; spec: string; config: string; };
-export enum LightClientWasmSetScriptsCommand {
+export enum LightClientSetScriptsCommand {
     All = 0,
     Partial = 1,
     Delete = 2,
 }
-export enum LightClientWasmOrder {
+export enum LightClientOrder {
     Desc = 0,
     Asc = 1,
 }
 
-export function cccOrderToLightClientWasmOrder(input: "asc" | "desc"): LightClientWasmOrder {
-    if (input === "asc") return LightClientWasmOrder.Asc;
-    else return LightClientWasmOrder.Desc;
+export function cccOrderToLightClientWasmOrder(input: "asc" | "desc"): LightClientOrder {
+    if (input === "asc") return LightClientOrder.Asc;
+    else return LightClientOrder.Desc;
 }
 
 type LightClientCellType = "input" | "output";
@@ -249,12 +267,12 @@ export type {
     DbWorkerInitializeOptions,
     LightClientWorkerInitializeOptions,
     FetchResponse,
-    JsonRpcScriptStatus,
+    LightClientScriptStatus,
     ScriptStatus,
-    JsonRpcRemoteNode,
+    LightClientRemoteNode,
     RemoteNode,
     LocalNode,
-    JsonRpcLocalNode,
+    LightClientLocalNode,
     NetworkFlag,
     LightClientTxWithCell,
     LightClientTxWithCells,

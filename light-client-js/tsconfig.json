@@ -24,6 +24,7 @@
   "exclude": [
     "webpack.config.js",
     "dist/**",
-    "node_modules/**"
+    "node_modules/**",
+    "jest.config.js"
   ]
 }

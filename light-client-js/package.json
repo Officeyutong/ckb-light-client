@@ -1,24 +1,29 @@
- {
+{
   "name": "light-client-js",
   "version": "1.0.0",
   "main": "dist/index.js",
   "license": "MIT",
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
     "typescript": "^5.7.2",
     "webpack": "^5.96.1",
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@ckb-ccc/core": "0.1.0-alpha.6",
     "light-client-db-worker": "file:../light-client-db-worker",
     "light-client-wasm": "file:../light-client-wasm",
-    "stream-browserify": "^3.0.0",
-    "@ckb-ccc/core": "0.1.0-alpha.6"
+    "stream-browserify": "^3.0.0"
   },
   "scripts": {
     "build-debug": "webpack --mode=development --stats-children",
     "build": "webpack --mode=production",
-    "serve": "webpack serve"
+    "serve": "webpack serve",
+    "test": "jest"
   },
   "exports": {
     ".": "./dist/index.js"
