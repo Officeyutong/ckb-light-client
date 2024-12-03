@@ -212,6 +212,12 @@ interface GetTransactionsResponse<T> {
 }
 
 export function lightClientGetTransactionsResultTo(input: LightClientPagination<LightClientTxWithCell> | LightClientPagination<LightClientTxWithCells>): GetTransactionsResponse<TxWithCell> | GetTransactionsResponse<TxWithCells> {
+    if (input.objects.length === 0) {
+        return ({
+            lastCursor: input.last_cursor,
+            transactions: []
+        })
+    }
     if ("io_index" in input.objects[0]) {
         return ({
             lastCursor: input.last_cursor,
