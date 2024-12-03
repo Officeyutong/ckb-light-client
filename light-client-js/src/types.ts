@@ -1,3 +1,4 @@
+import { ScriptLike } from "@ckb-ccc/core";
 import { JsonRpcScript, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 import { Num, Script } from "@ckb-ccc/core/barrel";
 
@@ -40,7 +41,7 @@ interface JsonRpcScriptStatus {
 }
 
 interface ScriptStatus {
-    script: Script,
+    script: ScriptLike,
     scriptType: JsonRpcScriptType,
     blockNumber: Num
 }
@@ -151,7 +152,15 @@ export function localNodeTo(input: JsonRpcLocalNode): LocalNode {
     })
 }
 type NetworkFlag = { type: "MainNet" } | { type: "TestNet" } | { type: "DevNet"; spec: string; config: string; };
-
+export enum LightClientWasmSetScriptsCommand {
+    All = 0,
+    Partial = 1,
+    Delete = 2,
+}
+export enum LightClientWasmOrder {
+    Desc = 0,
+    Asc = 1,
+}
 export type {
     LightClientFunctionCall,
     WorkerInitializeOptions,

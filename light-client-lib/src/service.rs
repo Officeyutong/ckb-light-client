@@ -154,7 +154,7 @@ pub struct PeerSyncState {
     pub proved_best_known_header: Option<HeaderView>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct SearchKey {
     pub script: Script,
     pub script_type: ScriptType,
@@ -175,7 +175,7 @@ impl Default for SearchKey {
     }
 }
 
-#[derive(Deserialize, Default, Serialize)]
+#[derive(Deserialize, Default, Serialize, Debug)]
 pub struct SearchKeyFilter {
     pub script: Option<Script>,
     pub script_len_range: Option<[Uint64; 2]>,
@@ -184,7 +184,7 @@ pub struct SearchKeyFilter {
     pub block_range: Option<[BlockNumber; 2]>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptType {
     Lock,

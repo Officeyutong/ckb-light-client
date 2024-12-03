@@ -26,6 +26,7 @@ use ckb_light_client_lib::{
     types::RunEnv,
     verify::verify_tx,
 };
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::*;
@@ -947,6 +948,7 @@ pub fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
     }
 
     let search_key: SearchKey = serde_wasm_bindgen::from_value(search_key)?;
+    debug!("Call get_cells_capacity: {:?}", search_key);
     let (prefix, from_key, direction, skip) = build_query_options(
         &search_key,
         KeyPrefix::CellLockScript,

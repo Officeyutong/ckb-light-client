@@ -1,5 +1,5 @@
 import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core/client";
-import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, transformFetchResponse } from "./types";
+import { FetchResponse, JsonRpcLocalNode, JsonRpcRemoteNode, JsonRpcScriptStatus, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientWasmSetScriptsCommand, transformFetchResponse, LightClientWasmOrder } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
@@ -125,7 +125,7 @@ class LightClient {
      * @param scripts Array of script status
      * @param command An optional enum parameter to control the behavior of set_scripts
      */
-    async setScripts(scripts: ScriptStatus[], command?: "all" | "partial" | "delete"): Promise<void> {
+    async setScripts(scripts: ScriptStatus[], command?: LightClientWasmSetScriptsCommand): Promise<void> {
         await this.invokeLightClientCommand("set_scripts", [scripts.map(x => scriptStatusFrom(x)), command]);
     }
     /**
@@ -143,14 +143,14 @@ class LightClient {
      */
     async getCells(
         searchKey: ClientIndexerSearchKeyLike,
-        order?: "asc" | "desc",
+        order?: LightClientWasmOrder,
         limit?: NumLike,
         afterCursor?: string
     ): Promise<ClientFindCellsResponse> {
         return JsonRpcTransformers.findCellsResponseTo(await this.invokeLightClientCommand("get_cells", [
             JsonRpcTransformers.indexerSearchKeyFrom(searchKey),
-            order ?? "asc",
-            numToHex(limit ?? 10),
+            order ?? LightClientWasmOrder.Asc,
+            Number(numFrom(numToHex(limit ?? 10))),
             afterCursor
         ]));
     }
@@ -164,7 +164,7 @@ class LightClient {
      */
     async getTransactions(
         searchKey: ClientIndexerSearchKeyTransactionLike,
-        order?: "asc" | "desc",
+        order?: LightClientWasmOrder,
         limit?: NumLike,
         afterCursor?: string
     ): Promise<ClientFindTransactionsResponse | ClientFindTransactionsGroupedResponse> {
@@ -173,8 +173,8 @@ class LightClient {
                 "get_transactions",
                 [
                     JsonRpcTransformers.indexerSearchKeyTransactionFrom(searchKey),
-                    order ?? "asc",
-                    numToHex(limit ?? 10),
+                    order ?? LightClientWasmOrder.Asc,
+                    Number(numFrom(numToHex(limit ?? 10))),
                     afterCursor
                 ]
             )

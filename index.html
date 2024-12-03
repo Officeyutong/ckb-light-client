@@ -7,8 +7,8 @@
     <script type="module">
         import LightClient from "./light-client-js/dist/index.js";
 
-        const devConfig = await (await fetch("./dev-config.toml")).text();
-        const devSpec = await (await fetch("./dev-spec.toml")).text();
+        const devConfig = await (await fetch("./test/dev-config.toml")).text();
+        const devSpec = await (await fetch("./test/dev-spec.toml")).text();
 
         console.log(LightClient);
         window.initWorkers = async () => {
@@ -20,10 +20,22 @@
                     type: "DevNet",
                     config: devConfig,
                     spec: devSpec
-                }
+                },
+                "info"
             );
 
             $("#init-button").removeClass("loading");
+        };
+        window.doTest = async () => {
+            await window.client.setScripts([{ script: { codeHash: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8", hashType: "type", args: "0xef0273afa67242b1b407eced450f78b2c02a2a23", }, scriptType: "lock", blockNumber: "0xb8d328" }], 0)
+
+
+            console.log(await window.client.getCellsCapacity({ script: { codeHash: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8", hashType: "type", args: "0xef0273afa67242b1b407eced450f78b2c02a2a23" }, scriptType: "lock" }))
+
+
+            console.log(await window.client.getCells({ script: { codeHash: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8", hashType: "type", args: "0xef0273afa67242b1b407eced450f78b2c02a2a23" }, scriptType: "lock" }))
+
+            console.log(await window.client.getTransactions({ script: { codeHash: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8", hashType: "type", args: "0xef0273afa67242b1b407eced450f78b2c02a2a23" }, scriptType: "lock" }))
         };
     </script>
 

@@ -31,7 +31,7 @@ use light_client_db_common::{
     DbCommandRequest, DbCommandResponse, InputCommand, OutputCommand, KV,
 };
 
-use log::{debug, info};
+use log::debug;
 
 use crate::{
     error::{Error, Result},
@@ -417,7 +417,7 @@ impl Storage {
                         skip: 0,
                     })
                     .unwrap();
-                info!("Received {:?}", remove_keys);
+                debug!("Received {:?}", remove_keys);
                 if let DbCommandResponse::IteratorKey { keys } = remove_keys {
                     batch.delete_many(keys).unwrap();
                 } else {
