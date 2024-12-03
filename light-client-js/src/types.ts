@@ -161,6 +161,12 @@ export enum LightClientWasmOrder {
     Desc = 0,
     Asc = 1,
 }
+
+export function cccOrderToLightClientWasmOrder(input: "asc" | "desc"): LightClientWasmOrder {
+    if (input === "asc") return LightClientWasmOrder.Asc;
+    else return LightClientWasmOrder.Desc;
+}
+
 export type {
     LightClientFunctionCall,
     WorkerInitializeOptions,

@@ -13,7 +13,7 @@
     "light-client-db-worker": "file:../light-client-db-worker",
     "light-client-wasm": "file:../light-client-wasm",
     "stream-browserify": "^3.0.0",
-    "@ckb-ccc/core": "https://gitpkg.vercel.app/Officeyutong/ccc/packages/core?a1b8a02"
+    "@ckb-ccc/core": "0.1.0-alpha.6"
   },
   "scripts": {
     "build-debug": "webpack --mode=development --stats-children",
