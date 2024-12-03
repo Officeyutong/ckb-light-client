@@ -17,7 +17,7 @@ test("test scriptStatusTo/From", () => {
             args: "0x0011223344"
         },
         script_type: "lock",
-        block_number: 1234n
+        block_number: "0x1234"
     };
     const transformed = scriptStatusTo(raw);
 

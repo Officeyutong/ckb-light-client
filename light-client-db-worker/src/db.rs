@@ -253,6 +253,10 @@ where
             )
             .await
             .with_context(|| anyhow!("Failed to collect iterator"))?;
+            debug!(
+                "Called iterator, args=<{:?}, {:?}, {:?}, {:?}>, result={:?}",
+                start_key_bound, order, limit, skip, kvs
+            );
             DbCommandResponse::Iterator { kvs }
         }
         DbCommandRequest::IteratorKey {

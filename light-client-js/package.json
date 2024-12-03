@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@ckb-ccc/core": "0.1.0-alpha.6",
+    "async-mutex": "^0.5.0",
     "light-client-db-worker": "file:../light-client-db-worker",
     "light-client-wasm": "file:../light-client-wasm",
     "stream-browserify": "^3.0.0"

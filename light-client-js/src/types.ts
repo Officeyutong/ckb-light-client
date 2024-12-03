@@ -1,5 +1,7 @@
 import { numFrom } from "@ckb-ccc/core";
 import { Hex } from "@ckb-ccc/core";
+import { hexFrom } from "@ckb-ccc/core";
+import { numToHex } from "@ckb-ccc/core";
 import { ClientBlockHeader } from "@ckb-ccc/core";
 import { ScriptLike } from "@ckb-ccc/core";
 import { JsonRpcBlockHeader, JsonRpcScript, JsonRpcTransaction, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
@@ -40,7 +42,7 @@ type JsonRpcScriptType = "lock" | "type";
 interface LightClientScriptStatus {
     script: JsonRpcScript;
     script_type: JsonRpcScriptType;
-    block_number: Num;
+    block_number: Hex;
 }
 
 interface ScriptStatus {
@@ -51,7 +53,7 @@ interface ScriptStatus {
 
 export function scriptStatusTo(input: LightClientScriptStatus): ScriptStatus {
     return ({
-        blockNumber: input.block_number,
+        blockNumber: numFrom(input.block_number),
         script: JsonRpcTransformers.scriptTo(input.script),
         scriptType: input.script_type
     })
@@ -59,7 +61,7 @@ export function scriptStatusTo(input: LightClientScriptStatus): ScriptStatus {
 
 export function scriptStatusFrom(input: ScriptStatus): LightClientScriptStatus {
     return ({
-        block_number: input.blockNumber,
+        block_number: numToHex(input.blockNumber),
         script: JsonRpcTransformers.scriptFrom(input.script),
         script_type: input.scriptType
     })

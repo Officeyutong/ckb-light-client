@@ -195,6 +195,7 @@ impl CommunicationChannel {
                 Some(take_while),
             ),
         };
+        debug!("Dispatching database command: {:?}", new_cmd);
         let CommunicationChannel {
             input_i32_arr,
             input_u8_arr,
@@ -1101,6 +1102,10 @@ impl Storage {
         // (block-hash, proved)
         matched_blocks: Vec<(Byte32, bool)>,
     ) {
+        debug!(
+            "Adding matched blocks: ({:?}, {:?}, {:?})",
+            start_number, blocks_count, matched_blocks
+        );
         assert!(!matched_blocks.is_empty());
         let mut key = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();
         key.extend(start_number.to_be_bytes());

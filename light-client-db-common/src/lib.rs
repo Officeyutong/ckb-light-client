@@ -8,7 +8,7 @@ pub struct KV {
     pub key: Vec<u8>,
     pub value: Vec<u8>,
 }
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy)]
 /// A serializable CursorDirection
 pub enum CursorDirection {
     #[default]

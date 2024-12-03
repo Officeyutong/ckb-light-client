@@ -2,15 +2,18 @@ import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientF
 import { FetchResponse, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
+import { Mutex } from "async-mutex";
+
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
 /**
  * A LightClient instance
  */
 class LightClient {
-    dbWorker: Worker | null
-    lightClientWorker: Worker | null
-    inputBuffer: SharedArrayBuffer
-    outputBuffer: SharedArrayBuffer
+    private dbWorker: Worker | null
+    private lightClientWorker: Worker | null
+    private inputBuffer: SharedArrayBuffer
+    private outputBuffer: SharedArrayBuffer
+    private commandInvokeLock: Mutex
     /**
      * Construct a LightClient instance.
      * inputBuffer and outputBuffer are buffers used for transporting data between database and light client. Set them to appropriate sizes.
@@ -22,6 +25,7 @@ class LightClient {
         this.lightClientWorker = new Worker(new URL("./lightclient.worker.ts", import.meta.url), { type: "module" });
         this.inputBuffer = new SharedArrayBuffer(inputBufferSize);
         this.outputBuffer = new SharedArrayBuffer(outputBufferSize);
+        this.commandInvokeLock = new Mutex();
 
     }
     /**
@@ -51,14 +55,35 @@ class LightClient {
         });
     }
     private invokeLightClientCommand(name: string, args?: any[]): Promise<any> {
-        this.lightClientWorker.postMessage({
-            name,
-            args: args || []
-        });
-        return new Promise((res, rej) => {
-            this.lightClientWorker.onmessage = (e) => res(e.data);
-            this.lightClientWorker.onerror = (evt) => rej(evt);
-        });
+        // Why use lock here?
+        // light-client-wasm provides synchronous APIs, means if we send a call request through postMessage, onmessage will be called only when the command call resolved. 
+        // We use lock here to avoid multiple call to postMessage before onmessage fired, to avoid mixed result of different calls 
+        // Since light-client-wasm is synchronous, we won't lose any performance by locking here
+        return this.commandInvokeLock.runExclusive(async () => {
+            this.lightClientWorker.postMessage({
+                name,
+                args: args || []
+            });
+            return await new Promise((resolve, reject) => {
+                const clean = () => {
+                    this.lightClientWorker.removeEventListener("message", resolveFn);
+                    this.lightClientWorker.removeEventListener("error", errorFn);
+                }
+                const resolveFn = (evt: MessageEvent<any>) => {
+                    resolve(evt.data);
+                    clean();
+
+                };
+                const errorFn = (evt: ErrorEvent) => {
+                    reject(evt);
+                    clean();
+
+                };
+                this.lightClientWorker.addEventListener("message", resolveFn);
+                this.lightClientWorker.addEventListener("error", errorFn);
+            })
+        })
+
     }
     /**
      * Stop the light client instance.
