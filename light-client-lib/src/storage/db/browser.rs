@@ -564,6 +564,10 @@ impl Storage {
         }
     }
     fn clear_matched_blocks(&self) {
+        debug!(
+            "Clearing matched blocks, task id {:?}",
+            tokio::task::try_id()
+        );
         let key_prefix: Vec<u8> = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();
 
         let mut batch = self.batch();
@@ -628,7 +632,13 @@ impl Storage {
         }
     }
     pub fn get_earliest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
-        self.get_matched_blocks(CursorDirection::NextUnique)
+        let result = self.get_matched_blocks(CursorDirection::NextUnique);
+        debug!(
+            "Called get earliest matched blocks: {:?}, task id {:?}",
+            result,
+            tokio::task::try_id()
+        );
+        result
     }
 
     pub fn get_latest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
@@ -1103,8 +1113,11 @@ impl Storage {
         matched_blocks: Vec<(Byte32, bool)>,
     ) {
         debug!(
-            "Adding matched blocks: ({:?}, {:?}, {:?})",
-            start_number, blocks_count, matched_blocks
+            "Adding matched blocks: ({:?}, {:?}, {:?}), task_id={:?}",
+            start_number,
+            blocks_count,
+            matched_blocks,
+            tokio::task::try_id()
         );
         assert!(!matched_blocks.is_empty());
         let mut key = Key::Meta(MATCHED_FILTER_BLOCKS_KEY).into_vec();

@@ -131,10 +131,19 @@ impl StorageWithChainData {
     pub fn pending_txs(&self) -> &RwLock<PendingTxs> {
         &self.pending_txs
     }
-
-    pub fn matched_blocks(&self) -> &RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+    #[cfg(target_arch = "wasm32")]
+    pub fn matched_blocks(
+        &self,
+    ) -> &tokio::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
         self.peers.matched_blocks()
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn matched_blocks(
+        &self,
+    ) -> &std::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+        self.peers.matched_blocks()
+    }
+
     /// return (added_ts, first_sent, missing)
     pub fn get_header_fetch_info(&self, block_hash: &H256) -> Option<(u64, u64, bool)> {
         self.peers.get_header_fetch_info(&block_hash.pack())

@@ -152,6 +152,9 @@ impl<'a> SendBlocksProofProcess<'a> {
                 let block_hashes: Vec<packed::Byte32> =
                     headers.iter().map(|header| header.hash()).collect();
                 {
+                    #[cfg(target_arch = "wasm32")]
+                    let mut matched_blocks = self.protocol.peers().matched_blocks().write().await;
+                    #[cfg(not(target_arch = "wasm32"))]
                     let mut matched_blocks = self
                         .protocol
                         .peers()

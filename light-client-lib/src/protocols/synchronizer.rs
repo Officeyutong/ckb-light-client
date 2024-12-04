@@ -3,7 +3,7 @@ use ckb_network::{
     async_trait, bytes::Bytes, BoxedCKBProtocolContext, CKBProtocolHandler, PeerIndex,
 };
 use ckb_types::{packed, prelude::*};
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -60,16 +60,18 @@ impl CKBProtocolHandler for SyncProtocol {
         match message {
             packed::SyncMessageUnionReader::SendBlock(reader) => {
                 let new_block = reader.to_entity().block();
-                let matched_blocks = self.peers.matched_blocks();
-                self.peers
-                    .add_block(&mut matched_blocks.write().expect("poisoned"), new_block);
-
-                let option = {
-                    let matched_blocks = matched_blocks.read().expect("poisoned");
-                    !matched_blocks.is_empty()
-                        && self.peers.all_matched_blocks_downloaded(&matched_blocks)
-                };
-                if option {
+                #[cfg(target_arch = "wasm32")]
+                let mut matched_blocks = self.peers.matched_blocks().write().await;
+                #[cfg(not(target_arch = "wasm32"))]
+                let mut matched_blocks = self.peers.matched_blocks().write().expect("poisoned");
+                self.peers.add_block(&mut matched_blocks, new_block);
+                debug!(
+                    "Handling sendblock, peers.matched_blocks={:?}",
+                    matched_blocks
+                );
+                if !matched_blocks.is_empty()
+                    && self.peers.all_matched_blocks_downloaded(&matched_blocks)
+                {
                     let (start_number, blocks_count, db_blocks) = self
                         .storage
                         .get_earliest_matched_blocks()
@@ -78,9 +80,7 @@ impl CKBProtocolHandler for SyncProtocol {
                         db_blocks.into_iter().map(|(hash, _)| hash).collect();
 
                     self.storage.remove_matched_blocks(start_number);
-                    let blocks = self
-                        .peers
-                        .clear_matched_blocks(&mut matched_blocks.write().expect("poisoned"));
+                    let blocks = self.peers.clear_matched_blocks(&mut matched_blocks);
                     assert_eq!(blocks.len(), db_blocks.len());
                     info!(
                         "all matched blocks downloaded, start_number={}, blocks_count={}, matched_count={}",
@@ -101,15 +101,13 @@ impl CKBProtocolHandler for SyncProtocol {
                     if let Some((_start_number, _blocks_count, db_blocks)) =
                         self.storage.get_earliest_matched_blocks()
                     {
-                        self.peers.add_matched_blocks(
-                            &mut matched_blocks.write().expect("poisoned"),
-                            db_blocks,
-                        );
+                        self.peers
+                            .add_matched_blocks(&mut matched_blocks, db_blocks);
                         let tip_header = self.storage.get_tip_header();
                         prove_or_download_matched_blocks(
                             Arc::clone(&self.peers),
                             &tip_header,
-                            &matched_blocks.read().expect("poisoned"),
+                            &matched_blocks,
                             nc.as_ref(),
                             INIT_BLOCKS_IN_TRANSIT_PER_PEER,
                         );

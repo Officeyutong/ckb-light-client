@@ -33,7 +33,7 @@ class LightClient {
      * @param networkSetting Network setting for light-client-wasm. You can specify config if you are using mainnet or testnet. You must provide config and spec if you are using devnet.
      * @param logLevel Log Level for light-client-db-worker and light-client-wasm
      */
-    async start(networkSetting: NetworkSetting, logLevel: "debug" | "info" = "info") {
+    async start(networkSetting: NetworkSetting, logLevel: "trace" | "debug" | "info" | "error" = "info") {
         this.dbWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,

@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt, mem,
     num::NonZeroU32,
-    sync::{Mutex, RwLock},
+    sync::Mutex,
 };
 
 use ckb_network::PeerIndex;
@@ -33,20 +33,23 @@ pub struct Peers {
     // The matched block filters to download, the key is the block hash, the value is:
     //   * if the block is proved
     //   * the downloaded block
-    matched_blocks: RwLock<HashMap<H256, (bool, Option<packed::Block>)>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    matched_blocks: std::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>>,
+    #[cfg(target_arch = "wasm32")]
+    matched_blocks: tokio::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>>,
 
     // Data:
     // - Cached check point index.
     // - Block filter hashes between current cached check point and next cached check point.
     //   - Exclude the cached check point.
     //   - Include at the next cached check point.
-    cached_block_filter_hashes: RwLock<(u32, Vec<packed::Byte32>)>,
+    cached_block_filter_hashes: std::sync::RwLock<(u32, Vec<packed::Byte32>)>,
 
     #[cfg(not(test))]
     max_outbound_peers: u32,
 
     #[cfg(test)]
-    max_outbound_peers: RwLock<u32>,
+    max_outbound_peers: std::sync::RwLock<u32>,
 
     check_point_interval: BlockNumber,
     start_check_point: (u32, packed::Byte32),
@@ -1265,8 +1268,17 @@ impl Peers {
             }
         }
     }
+    #[cfg(target_arch = "wasm32")]
+    pub fn matched_blocks(
+        &self,
+    ) -> &tokio::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+        &self.matched_blocks
+    }
 
-    pub fn matched_blocks(&self) -> &RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn matched_blocks(
+        &self,
+    ) -> &std::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
         &self.matched_blocks
     }
 

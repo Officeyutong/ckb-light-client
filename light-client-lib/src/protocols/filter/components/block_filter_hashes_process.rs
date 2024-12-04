@@ -27,7 +27,7 @@ impl<'a> BlockFilterHashesProcess<'a> {
         }
     }
 
-    pub fn execute(self) -> Status {
+    pub async fn execute(self) -> Status {
         let peer_state = if let Some(peer_state) = self.protocol.peers.get_state(&self.peer_index) {
             peer_state
         } else {
@@ -208,7 +208,7 @@ impl<'a> BlockFilterHashesProcess<'a> {
             } else {
                 // if couldn't request more block filter hashes,
                 // check if could request more block filters.
-                self.protocol.try_send_get_block_filters(self.nc, true);
+                self.protocol.try_send_get_block_filters(self.nc, true).await;
             }
         } else if start_number > finalized_check_point_number {
             let next_start_number_opt =

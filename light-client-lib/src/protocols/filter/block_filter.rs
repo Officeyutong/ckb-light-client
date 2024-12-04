@@ -95,7 +95,7 @@ impl FilterProtocol {
         self.last_ask_time.write().unwrap().replace(Instant::now());
     }
 
-    pub(crate) fn try_send_get_block_filters(
+    pub(crate) async fn try_send_get_block_filters(
         &self,
         nc: BoxedCKBProtocolContext,
         immediately: bool,
@@ -144,27 +144,30 @@ impl FilterProtocol {
             if let Some((db_start_number, blocks_count, db_blocks)) =
                 self.storage.get_earliest_matched_blocks()
             {
-                let matched_blocks = self.peers.matched_blocks();
+                #[cfg(target_arch = "wasm32")]
+                let mut matched_blocks = self.peers.matched_blocks().write().await;
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let mut matched_blocks = self.peers.matched_blocks().write().expect("poisoned");
+
                 debug!(
                     "try recover matched blocks from storage, start_number={}, \
                              blocks_count={}, matched_count: {}",
                     db_start_number,
                     blocks_count,
-                    matched_blocks.read().expect("poisoned").len(),
+                    matched_blocks.len(),
                 );
-                let option = matched_blocks.read().expect("poisoned").is_empty();
+                let option = matched_blocks.is_empty();
 
                 if option {
                     // recover matched blocks from storage
-                    self.peers.add_matched_blocks(
-                        &mut matched_blocks.write().expect("poisoned"),
-                        db_blocks,
-                    );
+                    self.peers
+                        .add_matched_blocks(&mut *matched_blocks, db_blocks);
                     let tip_header = self.storage.get_tip_header();
                     prove_or_download_matched_blocks(
                         Arc::clone(&self.peers),
                         &tip_header,
-                        &matched_blocks.read().expect("poisoned"),
+                        &matched_blocks,
                         nc.as_ref(),
                         INIT_BLOCKS_IN_TRANSIT_PER_PEER,
                     );
@@ -240,7 +243,9 @@ impl FilterProtocol {
                 components::BlockFilterCheckPointsProcess::new(reader, self, nc, peer).execute()
             }
             packed::BlockFilterMessageUnionReader::BlockFilterHashes(reader) => {
-                components::BlockFilterHashesProcess::new(reader, self, nc, peer).execute()
+                components::BlockFilterHashesProcess::new(reader, self, nc, peer)
+                    .execute()
+                    .await
                 // Status::ok()
             }
             packed::BlockFilterMessageUnionReader::BlockFilters(reader) => {
@@ -379,7 +384,7 @@ impl CKBProtocolHandler for FilterProtocol {
     async fn notify(&mut self, nc: BoxedCKBProtocolContext, token: u64) {
         match token {
             GET_BLOCK_FILTERS_TOKEN => {
-                self.try_send_get_block_filters(nc, false);
+                self.try_send_get_block_filters(nc, false).await;
             }
             GET_BLOCK_FILTER_HASHES_TOKEN => {
                 self.try_send_get_block_filter_hashes(nc).await;

@@ -466,6 +466,12 @@ pub fn set_scripts(
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
+    let mut matched_blocks = STORAGE_WITH_DATA
+        .get()
+        .unwrap()
+        .matched_blocks()
+        .blocking_write();
+
     let scripts: Vec<ScriptStatus> = scripts
         .into_iter()
         .map(|v| serde_wasm_bindgen::from_value::<ScriptStatus>(v))
@@ -479,7 +485,7 @@ pub fn set_scripts(
             scripts.into_iter().map(Into::into).collect(),
             command.map(Into::into).unwrap_or_default(),
         );
-
+    matched_blocks.clear();
     Ok(())
 }
 
