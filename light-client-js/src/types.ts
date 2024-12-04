@@ -16,7 +16,7 @@ interface DbWorkerInitializeOptions extends WorkerInitializeOptions {
 }
 
 interface LightClientWorkerInitializeOptions extends WorkerInitializeOptions {
-    networkFlag: NetworkFlag;
+    networkFlag: NetworkSetting;
 };
 
 interface LightClientFunctionCall {
@@ -173,7 +173,7 @@ export function localNodeTo(input: LightClientLocalNode): LocalNode {
         version: input.version
     })
 }
-type NetworkFlag = { type: "MainNet" } | { type: "TestNet" } | { type: "DevNet"; spec: string; config: string; };
+type NetworkSetting = { type: "MainNet"; config?: string; } | { type: "TestNet"; config?: string; } | { type: "DevNet"; spec: string; config: string; };
 export enum LightClientSetScriptsCommand {
     All = 0,
     Partial = 1,
@@ -275,7 +275,7 @@ export type {
     RemoteNode,
     LocalNode,
     LightClientLocalNode,
-    NetworkFlag,
+    NetworkSetting,
     LightClientTxWithCell,
     LightClientTxWithCells,
     TxWithCell,

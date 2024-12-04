@@ -72,9 +72,9 @@ fn change_status(flag: u8) {
 }
 #[derive(Deserialize)]
 #[serde(tag = "type")]
-enum NetworkFlag {
-    MainNet,
-    TestNet,
+enum NetworkSetting {
+    MainNet { config: Option<String> },
+    TestNet { config: Option<String> },
     DevNet { spec: String, config: String },
 }
 
@@ -87,19 +87,27 @@ pub async fn light_client(net_flag: JsValue, log_level: String) -> Result<(), Js
     wasm_logger::init(wasm_logger::Config::new(
         log::Level::from_str(&log_level).expect("Bad log level"),
     ));
-    let network_flag: NetworkFlag = serde_wasm_bindgen::from_value(net_flag)?;
+    let network_flag: NetworkSetting = serde_wasm_bindgen::from_value(net_flag)?;
 
     let mut config = match &network_flag {
-        NetworkFlag::TestNet => TESTNET_CONFIG.parse::<RunEnv>().unwrap(),
-        NetworkFlag::MainNet => MAINNET_CONFIG.parse::<RunEnv>().unwrap(),
-        NetworkFlag::DevNet { config, .. } => config.parse::<RunEnv>().unwrap(),
+        NetworkSetting::TestNet { config } => config
+            .as_ref()
+            .map_or(TESTNET_CONFIG, |v| v)
+            .parse::<RunEnv>()
+            .unwrap(),
+        NetworkSetting::MainNet { config } => config
+            .as_ref()
+            .map_or(MAINNET_CONFIG, |v| v)
+            .parse::<RunEnv>()
+            .unwrap(),
+        NetworkSetting::DevNet { config, .. } => config.parse::<RunEnv>().unwrap(),
     };
 
     let storage = Storage::new(&config.store.path);
     let chain_spec = ChainSpec::load_from(&match network_flag {
-        NetworkFlag::MainNet => Resource::bundled("specs/mainnet.toml".to_string()),
-        NetworkFlag::TestNet => Resource::bundled("specs/testnet.toml".to_string()),
-        NetworkFlag::DevNet { spec, .. } => Resource::raw(spec),
+        NetworkSetting::MainNet { .. } => Resource::bundled("specs/mainnet.toml".to_string()),
+        NetworkSetting::TestNet { .. } => Resource::bundled("specs/testnet.toml".to_string()),
+        NetworkSetting::DevNet { spec, .. } => Resource::raw(spec),
     })
     .expect("load spec should be OK");
 

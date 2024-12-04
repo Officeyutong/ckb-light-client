@@ -7,8 +7,7 @@
     <script type="module">
         import LightClient from "./light-client-js/dist/index.js";
 
-        const devConfig = await (await fetch("./test/dev-config.toml")).text();
-        const devSpec = await (await fetch("./test/dev-spec.toml")).text();
+        const testNetConfig = await (await fetch("./test/config.toml")).text();
 
         console.log(LightClient);
         window.initWorkers = async () => {
@@ -17,9 +16,8 @@
             window.client = client;
             await client.start(
                 {
-                    type: "DevNet",
-                    config: devConfig,
-                    spec: devSpec
+                    type: "TestNet",
+                    config: testNetConfig,
                 },
                 "info"
             );

@@ -1,5 +1,5 @@
 import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core";
-import { FetchResponse, LocalNode, localNodeTo, NetworkFlag, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus } from "./types";
+import { FetchResponse, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus, NetworkSetting } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 import { Mutex } from "async-mutex";
@@ -30,10 +30,10 @@ class LightClient {
     }
     /**
      * Start the light client.
-     * @param networkFlag Network flag for light-client-wasm. If you use DevNet, spec and config are necessary.
+     * @param networkSetting Network setting for light-client-wasm. You can specify config if you are using mainnet or testnet. You must provide config and spec if you are using devnet.
      * @param logLevel Log Level for light-client-db-worker and light-client-wasm
      */
-    async start(networkFlag: NetworkFlag, logLevel: "debug" | "info" = "info") {
+    async start(networkSetting: NetworkSetting, logLevel: "debug" | "info" = "info") {
         this.dbWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
@@ -42,7 +42,7 @@ class LightClient {
         this.lightClientWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
-            networkFlag,
+            networkFlag: networkSetting,
             logLevel: logLevel
         });
         await new Promise<void>((res, rej) => {
