@@ -9,15 +9,15 @@ homepage = "https://github.com/nervosnetwork/ckb-light-client"
 repository = "https://github.com/nervosnetwork/ckb-light-client"
 
 [dependencies]
-ckb-async-runtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-chain-spec = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-network = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-stop-handler = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-resource = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-jsonrpc-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-types = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-traits = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
-ckb-systemtime = { git = "https://github.com/driftluo/ckb.git", rev = "e8aab4c" }
+ckb-async-runtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-network = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-stop-handler = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-resource = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-traits = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
 
 ckb-light-client-lib = { path = "../light-client-lib" }
 clap = { version = "4", features = ["cargo"] }

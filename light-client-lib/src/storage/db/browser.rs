@@ -54,6 +54,7 @@ enum CommandRequestWithTakeWhile {
     Delete {
         keys: Vec<Vec<u8>>,
     },
+    #[allow(clippy::type_complexity)]
     Iterator {
         start_key_bound: Vec<u8>,
         order: CursorDirection,
@@ -61,6 +62,7 @@ enum CommandRequestWithTakeWhile {
         limit: usize,
         skip: usize,
     },
+    #[allow(clippy::type_complexity)]
     IteratorKey {
         start_key_bound: Vec<u8>,
         order: CursorDirection,
@@ -129,12 +131,12 @@ impl CommunicationChannel {
         write_command_with_payload(
             InputCommand::OpenDatabase as i32,
             store_name,
-            &input_i32_arr,
-            &input_u8_arr,
+            input_i32_arr,
+            input_u8_arr,
         )
         .with_context(|| anyhow!("Failed to write db command"))
         .unwrap();
-        Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
+        Atomics::wait(output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
         let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
         match output_cmd {
             OutputCommand::OpenDatabaseResponse => {
@@ -142,7 +144,7 @@ impl CommunicationChannel {
             }
             OutputCommand::Error => panic!(
                 "{}",
-                read_command_payload::<String>(&output_i32_arr, &output_u8_arr).unwrap()
+                read_command_payload::<String>(output_i32_arr, output_u8_arr).unwrap()
             ),
             OutputCommand::RequestTakeWhile
             | OutputCommand::Waiting
@@ -206,18 +208,18 @@ impl CommunicationChannel {
         write_command_with_payload(
             InputCommand::DbRequest as i32,
             new_cmd,
-            &input_i32_arr,
-            &input_u8_arr,
+            input_i32_arr,
+            input_u8_arr,
         )
         .with_context(|| anyhow!("Failed to write db command"))?;
         loop {
-            Atomics::wait(&output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
+            Atomics::wait(output_i32_arr, 0, OutputCommand::Waiting as i32).unwrap();
             let output_cmd = OutputCommand::try_from(output_i32_arr.get_index(0)).unwrap();
             output_i32_arr.set_index(0, 0);
             match output_cmd {
                 OutputCommand::OpenDatabaseResponse | OutputCommand::Waiting => unreachable!(),
                 OutputCommand::RequestTakeWhile => {
-                    let arg = read_command_payload::<Vec<u8>>(&output_i32_arr, &output_u8_arr)?;
+                    let arg = read_command_payload::<Vec<u8>>(output_i32_arr, output_u8_arr)?;
                     let ok = take_while.as_ref().unwrap()(&arg);
 
                     debug!(
@@ -227,19 +229,19 @@ impl CommunicationChannel {
                     write_command_with_payload(
                         InputCommand::ResponseTakeWhile as i32,
                         ok,
-                        &input_i32_arr,
-                        &input_u8_arr,
+                        input_i32_arr,
+                        input_u8_arr,
                     )?;
                     continue;
                 }
                 OutputCommand::DbResponse => {
-                    return Ok(read_command_payload::<DbCommandResponse>(
-                        &output_i32_arr,
-                        &output_u8_arr,
-                    )?);
+                    return read_command_payload::<DbCommandResponse>(
+                        output_i32_arr,
+                        output_u8_arr,
+                    );
                 }
                 OutputCommand::Error => {
-                    let payload = read_command_payload::<String>(&output_i32_arr, &output_u8_arr)?;
+                    let payload = read_command_payload::<String>(output_i32_arr, output_u8_arr)?;
                     bail!("{}", payload);
                 }
             }
@@ -270,8 +272,8 @@ impl Storage {
         write_command_with_payload(
             InputCommand::Shutdown as i32,
             (),
-            &input_i32_arr,
-            &input_u8_arr,
+            input_i32_arr,
+            input_u8_arr,
         )
         .unwrap();
     }
@@ -318,6 +320,7 @@ impl Storage {
             _ => unreachable!(),
         }
     }
+    #[allow(clippy::needless_lifetimes)]
     fn get_pinned<'a, K>(&'a self, key: K) -> Result<Option<Vec<u8>>>
     where
         K: AsRef<[u8]>,
@@ -589,6 +592,7 @@ impl Storage {
             unreachable!()
         }
     }
+    #[allow(clippy::type_complexity)]
     fn get_matched_blocks(
         &self,
         direction: CursorDirection,
@@ -598,7 +602,7 @@ impl Storage {
             CursorDirection::NextUnique => key_prefix.clone(),
             CursorDirection::PrevUnique => {
                 let mut key = key_prefix.clone();
-                key.extend(u64::max_value().to_be_bytes());
+                key.extend(u64::MAX.to_be_bytes());
                 key
             }
             _ => panic!("Invalid direction"),
@@ -631,6 +635,7 @@ impl Storage {
             unreachable!()
         }
     }
+    #[allow(clippy::type_complexity)]
     pub fn get_earliest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
         let result = self.get_matched_blocks(CursorDirection::NextUnique);
         debug!(
@@ -640,7 +645,7 @@ impl Storage {
         );
         result
     }
-
+    #[allow(clippy::type_complexity)]
     pub fn get_latest_matched_blocks(&self) -> Option<(u64, u64, Vec<(Byte32, bool)>)> {
         self.get_matched_blocks(CursorDirection::PrevUnique)
     }
@@ -925,6 +930,7 @@ impl Batch {
 }
 
 impl Storage {
+    #[allow(clippy::type_complexity)]
     pub fn collect_iterator(
         &self,
         start_key_bound: Vec<u8>,
@@ -944,7 +950,7 @@ impl Storage {
             })
             .unwrap();
         if let DbCommandResponse::Iterator { kvs } = value {
-            return kvs;
+            kvs
         } else {
             unreachable!()
         }
@@ -1159,7 +1165,7 @@ impl Storage {
             )
             .expect("batch put should be ok");
         let tx_hash = tx.calc_tx_hash();
-        let tx_index = u32::max_value();
+        let tx_index = u32::MAX;
         let key = Key::TxHash(&tx_hash).into_vec();
         let value = Value::Transaction(block_number, tx_index as TxIndex, tx);
         batch.put_kv(key, value).expect("batch put should be ok");
@@ -1187,7 +1193,7 @@ impl Storage {
         let index = self.get_max_check_point_index();
         let hash = self
             .get_check_points(index, 1)
-            .get(0)
+            .first()
             .cloned()
             .expect("db get last check point should be ok");
         (index, hash)

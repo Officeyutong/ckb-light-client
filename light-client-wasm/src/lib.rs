@@ -44,9 +44,9 @@ use ckb_types::{core, packed, prelude::*, H256};
 
 use std::sync::OnceLock;
 
-static MAINNET_CONFIG: &'static str = include_str!("../../config/mainnet.toml");
+static MAINNET_CONFIG: &str = include_str!("../../config/mainnet.toml");
 
-static TESTNET_CONFIG: &'static str = include_str!("../../config/testnet.toml");
+static TESTNET_CONFIG: &str = include_str!("../../config/testnet.toml");
 
 static STORAGE_WITH_DATA: OnceLock<StorageWithChainData> = OnceLock::new();
 
@@ -70,6 +70,7 @@ fn status(flag: u8) -> bool {
 fn change_status(flag: u8) {
     START_FLAG.store(flag, Ordering::SeqCst);
 }
+#[allow(clippy::enum_variant_names)]
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 enum NetworkSetting {
@@ -243,15 +244,15 @@ pub fn get_tip_header() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
-    Ok((&Into::<ckb_jsonrpc_types::HeaderView>::into(
+    Ok(Into::<ckb_jsonrpc_types::HeaderView>::into(
         STORAGE_WITH_DATA
             .get()
             .unwrap()
             .storage()
             .get_tip_header()
             .into_view(),
-    ))
-        .serialize(&SERIALIZER)?)
+    )
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -259,15 +260,15 @@ pub fn get_genesis_block() -> Result<JsValue, JsValue> {
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
-    Ok((&Into::<ckb_jsonrpc_types::BlockView>::into(
+    Ok(Into::<ckb_jsonrpc_types::BlockView>::into(
         STORAGE_WITH_DATA
             .get()
             .unwrap()
             .storage()
             .get_genesis_block()
             .into_view(),
-    ))
-        .serialize(&SERIALIZER)?)
+    )
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -280,7 +281,7 @@ pub fn get_header(hash: &str) -> Result<JsValue, JsValue> {
     let header_view: Option<ckb_jsonrpc_types::HeaderView> =
         swc.storage().get_header(&block_hash.pack()).map(Into::into);
 
-    Ok((&header_view).serialize(&SERIALIZER)?)
+    Ok(header_view.serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -294,7 +295,7 @@ pub fn fetch_header(hash: &str) -> Result<JsValue, JsValue> {
 
     if let Some(value) = swc.storage().get_header(&block_hash.pack()) {
         return Ok(
-            (&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetched { data: value.into() })
+            FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetched { data: value.into() }
                 .serialize(&SERIALIZER)?,
         );
     }
@@ -307,23 +308,23 @@ pub fn fetch_header(hash: &str) -> Result<JsValue, JsValue> {
             return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound,)
                 .serialize(&SERIALIZER)?);
         } else if first_sent > 0 {
-            return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetching {
+            return Ok(FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetching {
                 first_sent: first_sent.into(),
-            })
-                .serialize(&SERIALIZER)?);
+            }
+            .serialize(&SERIALIZER)?);
         } else {
-            return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Added {
+            return Ok(FetchStatus::<ckb_jsonrpc_types::HeaderView>::Added {
                 timestamp: added_ts.into(),
-            })
-                .serialize(&SERIALIZER)?);
+            }
+            .serialize(&SERIALIZER)?);
         }
     } else {
         swc.add_fetch_header(block_hash, now);
     }
-    Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::Added {
+    Ok(FetchStatus::<ckb_jsonrpc_types::HeaderView>::Added {
         timestamp: now.into(),
-    })
-        .serialize(&SERIALIZER)?)
+    }
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -361,7 +362,7 @@ pub fn local_node_info() -> Result<JsValue, JsValue> {
     }
 
     let network_controller = NET_CONTROL.get().unwrap();
-    Ok((&LocalNode {
+    Ok(LocalNode {
         version: network_controller.version().to_owned(),
         node_id: network_controller.node_id(),
         active: network_controller.is_active(),
@@ -383,8 +384,8 @@ pub fn local_node_info() -> Result<JsValue, JsValue> {
             })
             .collect::<Vec<_>>(),
         connections: (network_controller.connected_peers().len() as u64).into(),
-    })
-        .serialize(&SERIALIZER)?)
+    }
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -455,7 +456,7 @@ pub fn get_peers() -> Result<JsValue, JsValue> {
             }
         })
         .collect();
-    Ok((&peers).serialize(&SERIALIZER)?)
+    Ok(peers.serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -474,7 +475,7 @@ pub fn set_scripts(
 
     let scripts: Vec<ScriptStatus> = scripts
         .into_iter()
-        .map(|v| serde_wasm_bindgen::from_value::<ScriptStatus>(v))
+        .map(serde_wasm_bindgen::from_value::<ScriptStatus>)
         .collect::<Result<Vec<_>, _>>()?;
 
     STORAGE_WITH_DATA
@@ -503,7 +504,7 @@ pub fn get_scripts() -> Result<Vec<JsValue>, JsValue> {
     Ok(scripts
         .into_iter()
         .map(Into::into)
-        .map(|v: ScriptStatus| (&v).serialize(&SERIALIZER))
+        .map(|v: ScriptStatus| v.serialize(&SERIALIZER))
         .collect::<Result<Vec<_>, _>>()?)
 }
 
@@ -577,7 +578,7 @@ pub fn get_cells(
 
         let tx = packed::Transaction::from_slice(
             &storage
-                .get(&Key::TxHash(&tx_hash).into_vec())
+                .get(Key::TxHash(&tx_hash).into_vec())
                 .unwrap()
                 .expect("stored tx")[12..],
         )
@@ -670,11 +671,11 @@ pub fn get_cells(
         });
     }
 
-    Ok((&Pagination {
+    Ok((Pagination {
         objects: cells,
         last_cursor: JsonBytes::from_vec(last_key),
     })
-        .serialize(&SERIALIZER)?)
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -845,11 +846,11 @@ pub fn get_transactions(
             }
         }
 
-        Ok((&Pagination {
+        Ok((Pagination {
             objects: tx_with_cells.into_iter().map(Tx::Grouped).collect(),
             last_cursor: JsonBytes::from_vec(last_key),
         })
-            .serialize(&SERIALIZER)?)
+        .serialize(&SERIALIZER)?)
     } else {
         let mut last_key = Vec::new();
         let mut txs = Vec::new();
@@ -947,11 +948,11 @@ pub fn get_transactions(
             }))
         }
 
-        Ok((&Pagination {
+        Ok((Pagination {
             objects: txs,
             last_cursor: JsonBytes::from_vec(last_key),
         })
-            .serialize(&SERIALIZER)?)
+        .serialize(&SERIALIZER)?)
     }
 }
 
@@ -1094,12 +1095,12 @@ pub fn get_cells_capacity(search_key: JsValue) -> Result<JsValue, JsValue> {
         .expect("snapshot get last state should be ok")
         .map(|data| packed::HeaderReader::from_slice_should_be_ok(&data[32..]).to_entity())
         .expect("tip header should be inited");
-    Ok((&CellsCapacity {
+    Ok((CellsCapacity {
         capacity: capacity.into(),
         block_hash: tip_header.calc_header_hash().unpack(),
         block_number: tip_header.raw().number().unpack(),
     })
-        .serialize(&SERIALIZER)?)
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -1139,7 +1140,7 @@ pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
 
     if let Some((transaction, header)) = swc.storage().get_transaction_with_header(&tx_hash.pack())
     {
-        return Ok((&TransactionWithStatus {
+        return Ok((TransactionWithStatus {
             transaction: Some(transaction.into_view().into()),
             cycles: None,
             tx_status: TxStatus {
@@ -1147,7 +1148,7 @@ pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
                 status: Status::Committed,
             },
         })
-            .serialize(&SERIALIZER)?);
+        .serialize(&SERIALIZER)?);
     }
 
     if let Some((transaction, cycles, _)) = swc
@@ -1156,7 +1157,7 @@ pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
         .expect("pending_txs lock is poisoned")
         .get(&tx_hash.pack())
     {
-        return Ok((&TransactionWithStatus {
+        return Ok((TransactionWithStatus {
             transaction: Some(transaction.into_view().into()),
             cycles: Some(cycles.into()),
             tx_status: TxStatus {
@@ -1164,10 +1165,10 @@ pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
                 status: Status::Pending,
             },
         })
-            .serialize(&SERIALIZER)?);
+        .serialize(&SERIALIZER)?);
     }
 
-    Ok((&TransactionWithStatus {
+    Ok((TransactionWithStatus {
         transaction: None,
         cycles: None,
         tx_status: TxStatus {
@@ -1175,7 +1176,7 @@ pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
             status: Status::Unknown,
         },
     })
-        .serialize(&SERIALIZER)?)
+    .serialize(&SERIALIZER)?)
 }
 
 #[wasm_bindgen]
@@ -1187,7 +1188,7 @@ pub fn fetch_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
     let tws = get_transaction(tx_hash)?;
     let tws: TransactionWithStatus = serde_wasm_bindgen::from_value(tws)?;
     if tws.transaction.is_some() {
-        return Ok((&FetchStatus::Fetched { data: tws }).serialize(&SERIALIZER)?);
+        return Ok((FetchStatus::Fetched { data: tws }).serialize(&SERIALIZER)?);
     }
     let tx_hash = H256::from_str(&tx_hash[2..]).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let swc = STORAGE_WITH_DATA.get().unwrap();
@@ -1197,28 +1198,28 @@ pub fn fetch_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
         if missing {
             // re-fetch the transaction
             swc.add_fetch_tx(tx_hash, now);
-            return Ok((&FetchStatus::<TransactionWithStatus>::NotFound,).serialize(&SERIALIZER)?);
+            return Ok((FetchStatus::<TransactionWithStatus>::NotFound,).serialize(&SERIALIZER)?);
         } else if first_sent > 0 {
-            return Ok((&FetchStatus::<TransactionWithStatus>::Fetching {
+            return Ok((FetchStatus::<TransactionWithStatus>::Fetching {
                 first_sent: first_sent.into(),
             })
-                .serialize(&SERIALIZER)?);
+            .serialize(&SERIALIZER)?);
         } else {
-            return Ok((&FetchStatus::<TransactionWithStatus>::Added {
+            return Ok((FetchStatus::<TransactionWithStatus>::Added {
                 timestamp: added_ts.into(),
             })
-                .serialize(&SERIALIZER)?);
+            .serialize(&SERIALIZER)?);
         }
     } else {
         swc.add_fetch_tx(tx_hash, now);
     }
-    Ok((&FetchStatus::<TransactionWithStatus>::Added {
+    Ok((FetchStatus::<TransactionWithStatus>::Added {
         timestamp: now.into(),
     })
-        .serialize(&SERIALIZER)?)
+    .serialize(&SERIALIZER)?)
 }
 
-const MAX_PREFIX_SEARCH_SIZE: usize = u16::max_value() as usize;
+const MAX_PREFIX_SEARCH_SIZE: usize = u16::MAX as usize;
 
 // a helper fn to build query options from search paramters, returns prefix, from_key, direction and skip offset
 pub fn build_query_options(

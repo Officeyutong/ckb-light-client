@@ -152,7 +152,7 @@ impl<'a> BlockFiltersProcess<'a> {
                         .filter
                         .storage
                         .get_check_points(cached_check_point_index, 1)
-                        .get(0)
+                        .first()
                         .cloned()
                         .expect("all check points before finalized should be existed");
                     (cached_check_point, cached_block_filter_hashes)
@@ -240,7 +240,7 @@ impl<'a> BlockFiltersProcess<'a> {
                 {
                     self.filter
                         .peers
-                        .add_matched_blocks(&mut *matched_blocks, db_blocks);
+                        .add_matched_blocks(&mut matched_blocks, db_blocks);
                     prove_or_download_matched_blocks(
                         Arc::clone(&self.filter.peers),
                         &tip_header,

@@ -44,7 +44,7 @@ impl<'a> LightClientProtocolReply<'a> for &(dyn CKBProtocolContext + 'a) {
 // And also, we should add the `header.epoch().is_well_formed()` check into `header.is_valid()`.
 pub(crate) trait HeaderUtils {
     fn is_parent_of(&self, child: &Self) -> bool;
-
+    #[allow(unused)]
     fn is_child_of(&self, parent: &Self) -> bool {
         parent.is_parent_of(self)
     }

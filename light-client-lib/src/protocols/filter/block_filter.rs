@@ -162,7 +162,7 @@ impl FilterProtocol {
                 if option {
                     // recover matched blocks from storage
                     self.peers
-                        .add_matched_blocks(&mut *matched_blocks, db_blocks);
+                        .add_matched_blocks(&mut matched_blocks, db_blocks);
                     let tip_header = self.storage.get_tip_header();
                     prove_or_download_matched_blocks(
                         Arc::clone(&self.peers),

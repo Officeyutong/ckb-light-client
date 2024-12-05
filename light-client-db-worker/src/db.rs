@@ -191,7 +191,7 @@ where
         .map_err(|e| anyhow!("Failed to create transaction: {:?}", e))?;
 
     let store = tran
-        .object_store(&store_name)
+        .object_store(store_name)
         .map_err(|e| anyhow!("Unable to find store {}: {}", store_name, e))?;
 
     let result = match cmd {

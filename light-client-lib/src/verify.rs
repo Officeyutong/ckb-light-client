@@ -95,7 +95,7 @@ where
     NonContextualTransactionVerifier::new(&transaction, &consensus).verify()?;
 
     let rtx = resolve_tx(swc, transaction)?;
-    let tx_env = TxVerifyEnv::new_submit(&tip_header);
+    let tx_env = TxVerifyEnv::new_submit(tip_header);
     ContextualTransactionVerifier::new(Arc::new(rtx), Arc::clone(&consensus), swc, Arc::new(tx_env))
         .verify(consensus.max_block_cycles())
 }
