@@ -255,8 +255,8 @@ static DB_INITIALIZED: AtomicBool = AtomicBool::new(false);
 pub struct Storage {
     channel: CommunicationChannel,
 }
-/// Each WebWorker has its own memory space, so objects won't be sended to other workers, neither will them be accessed by multiple workers
-/// It's safe to implement [`std::marker::Send`] + [`std::marker::Sync`] for [`crate::storage::db::browser::Storage`]
+/// We are sure that a single light-client-wasm instance will only run on one thread.
+/// So it's safe to implement [`std::marker::Send`] + [`std::marker::Sync`] for [`crate::storage::db::browser::Storage`]
 unsafe impl Sync for Storage {}
 unsafe impl Send for Storage {}
 

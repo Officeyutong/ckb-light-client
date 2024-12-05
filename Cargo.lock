@@ -3078,7 +3078,7 @@ checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 [[package]]
 name = "quanta"
 version = "0.12.3"
-source = "git+https://github.com/Officeyutong/quanta?rev=fc259ac#fc259ac2c8d510e12b8669d06729a9641f7a5676"
+source = "git+https://github.com/Officeyutong/quanta?rev=cf90e5a#cf90e5a00b5ce8eff69ec9fdc91ffdcba67dd974"
 dependencies = [
  "crossbeam-utils",
  "libc",

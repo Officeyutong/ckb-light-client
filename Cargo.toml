@@ -15,4 +15,4 @@ resolver = "2"
 overflow-checks = true
 
 [patch.crates-io]
-quanta = { git = "https://github.com/Officeyutong/quanta", rev = "fc259ac" }
+quanta = { git = "https://github.com/Officeyutong/quanta", rev = "cf90e5a" }
