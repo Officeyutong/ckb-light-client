@@ -1001,7 +1001,7 @@ impl Service {
     }
 }
 
-const MAX_PREFIX_SEARCH_SIZE: usize = u16::max_value() as usize;
+const MAX_PREFIX_SEARCH_SIZE: usize = u16::MAX as usize;
 
 // a helper fn to build query options from search paramters, returns prefix, from_key, direction and skip offset
 pub fn build_query_options(

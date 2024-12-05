@@ -307,7 +307,7 @@ impl Storage {
         self.get_matched_blocks(Direction::Reverse)
     }
 
-    fn get_check_points(&self, start_index: CpIndex, limit: usize) -> Vec<Byte32> {
+    pub fn get_check_points(&self, start_index: CpIndex, limit: usize) -> Vec<Byte32> {
         let start_key = Key::CheckPointIndex(start_index).into_vec();
         let key_prefix = [KeyPrefix::CheckPointIndex as u8];
         let mode = IteratorMode::From(start_key.as_ref(), Direction::Forward);
@@ -667,7 +667,7 @@ impl Storage {
             .expect("db put last n headers should be ok");
     }
 
-    fn get_last_n_headers(&self) -> Vec<(u64, Byte32)> {
+    pub fn get_last_n_headers(&self) -> Vec<(u64, Byte32)> {
         let key = Key::Meta(LAST_N_HEADERS_KEY).into_vec();
         self.get_pinned(&key)
             .expect("db get last n headers should be ok")
@@ -777,7 +777,7 @@ impl Storage {
         (index, hash)
     }
 
-    fn get_max_check_point_index(&self) -> CpIndex {
+    pub fn get_max_check_point_index(&self) -> CpIndex {
         let key = Key::Meta(MAX_CHECK_POINT_INDEX).into_vec();
         self.get_pinned(&key)
             .expect("db get max check point index should be ok")
@@ -785,14 +785,14 @@ impl Storage {
             .expect("db get max check point index should be ok")
     }
 
-    fn update_max_check_point_index(&self, index: CpIndex) {
+    pub fn update_max_check_point_index(&self, index: CpIndex) {
         let key = Key::Meta(MAX_CHECK_POINT_INDEX).into_vec();
         let value = index.to_be_bytes();
         self.put(key, value)
             .expect("db put max check point index should be ok");
     }
 
-    fn update_check_points(&self, start_index: CpIndex, check_points: &[Byte32]) {
+    pub fn update_check_points(&self, start_index: CpIndex, check_points: &[Byte32]) {
         let mut index = start_index;
         let mut batch = self.batch();
         for cp in check_points {

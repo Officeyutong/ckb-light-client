@@ -280,7 +280,7 @@ impl<'a> BlockFiltersProcess<'a> {
         } else {
             // if couldn't request more block filters,
             // check if could request more block filter hashes.
-            self.filter.try_send_get_block_filter_hashes(self.nc).await;
+            self.filter.try_send_get_block_filter_hashes(self.nc);
         }
 
         Status::ok()

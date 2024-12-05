@@ -193,7 +193,7 @@ impl FilterProtocol {
         }
     }
 
-    pub(crate) async fn try_send_get_block_filter_hashes(&self, nc: BoxedCKBProtocolContext) {
+    pub(crate) fn try_send_get_block_filter_hashes(&self, nc: BoxedCKBProtocolContext) {
         let min_filtered_block_number = self.storage.get_min_filtered_block_number();
         self.peers
             .update_min_filtered_block_number(min_filtered_block_number);
@@ -387,7 +387,7 @@ impl CKBProtocolHandler for FilterProtocol {
                 self.try_send_get_block_filters(nc, false).await;
             }
             GET_BLOCK_FILTER_HASHES_TOKEN => {
-                self.try_send_get_block_filter_hashes(nc).await;
+                self.try_send_get_block_filter_hashes(nc);
             }
             GET_BLOCK_FILTER_CHECK_POINTS_TOKEN => {
                 let peers = self.peers.get_peers_which_require_more_check_points();

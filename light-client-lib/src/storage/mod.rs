@@ -5,8 +5,6 @@ use ckb_traits::{
     CellDataProvider, ExtensionProvider, HeaderFields, HeaderFieldsProvider, HeaderProvider,
 };
 use ckb_types::core::cell::CellMeta;
-#[cfg(not(target_arch = "wasm32"))]
-use ckb_types::core::cell::CellMeta;
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -159,7 +157,7 @@ impl StorageWithChainData {
         self.peers.add_fetch_tx(tx_hash.pack(), timestamp);
     }
 }
-
+#[cfg(target_arch = "wasm32")]
 impl CellProvider for StorageWithChainData {
     fn cell(&self, out_point: &OutPoint, eager_load: bool) -> CellStatus {
         match self.storage.cell(out_point, eager_load) {
@@ -194,7 +192,7 @@ impl CellProvider for StorageWithChainData {
         }
     }
 }
-
+#[cfg(target_arch = "wasm32")]
 impl CellDataProvider for StorageWithChainData {
     fn get_cell_data(&self, _out_point: &OutPoint) -> Option<Bytes> {
         unreachable!()
@@ -204,6 +202,7 @@ impl CellDataProvider for StorageWithChainData {
         unreachable!()
     }
 }
+#[cfg(target_arch = "wasm32")]
 impl HeaderProvider for StorageWithChainData {
     fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
         self.storage
@@ -211,7 +210,7 @@ impl HeaderProvider for StorageWithChainData {
             .or_else(|| self.peers.find_header_in_proved_state(hash))
     }
 }
-
+#[cfg(target_arch = "wasm32")]
 impl HeaderFieldsProvider for StorageWithChainData {
     fn get_header_fields(&self, hash: &Byte32) -> Option<HeaderFields> {
         self.get_header(hash).map(|header| HeaderFields {
@@ -223,7 +222,7 @@ impl HeaderFieldsProvider for StorageWithChainData {
         })
     }
 }
-
+#[cfg(target_arch = "wasm32")]
 impl ExtensionProvider for StorageWithChainData {
     fn get_block_extension(&self, hash: &packed::Byte32) -> Option<packed::Bytes> {
         self.storage

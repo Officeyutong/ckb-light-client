@@ -6,6 +6,8 @@ members = [
     "light-client-db-worker",
     "light-client-db-common",
 ]
+exclude = ["light-client-bin"]
+
 resolver = "2"
 
 
