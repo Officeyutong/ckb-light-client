@@ -2,6 +2,10 @@ use anyhow::anyhow;
 use anyhow::Context;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use web_sys::js_sys::{Atomics, Int32Array, Uint8Array};
+
+#[cfg(test)]
+pub mod tests;
+
 #[derive(Serialize, Deserialize, Debug)]
 /// Represent a key-value pair
 pub struct KV {
