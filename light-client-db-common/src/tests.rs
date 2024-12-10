@@ -1,7 +1,7 @@
 use wasm_bindgen_test::wasm_bindgen_test;
 use web_sys::js_sys::{Int32Array, SharedArrayBuffer, Uint8Array};
 
-use crate::{write_command_with_payload, InputCommand, OutputCommand};
+use crate::{read_command_payload, write_command_with_payload, InputCommand, OutputCommand};
 
 #[wasm_bindgen_test]
 fn test_command_conversion() {
@@ -12,7 +12,6 @@ fn test_command_conversion() {
 }
 
 #[wasm_bindgen_test]
-// #[test]
 fn test_command_write() {
     let arr_buf = SharedArrayBuffer::new(100);
     let i32arr = Int32Array::new(&arr_buf);
@@ -30,4 +29,16 @@ fn test_command_write() {
     let result =
         bincode::deserialize::<Vec<i32>>(&buf[8..i32arr.get_index(1) as usize + 8]).unwrap();
     assert_eq!(result, vec![1, 2, 3, 4]);
+}
+
+#[wasm_bindgen_test]
+fn test_command_read() {
+    let arr_buf = SharedArrayBuffer::new(100);
+    let i32arr = Int32Array::new(&arr_buf);
+    let u8arr = Uint8Array::new(&arr_buf);
+    let buf = bincode::serialize(&vec![1, 2, 3, 4]).unwrap();
+    i32arr.set_index(1, buf.len() as i32);
+    u8arr.subarray(8, 8 + buf.len() as u32).copy_from(&buf);
+    let decoded = read_command_payload::<Vec<i32>>(&i32arr, &u8arr).unwrap();
+    assert_eq!(decoded, vec![1, 2, 3, 4]);
 }
