@@ -12,6 +12,10 @@ use web_sys::js_sys::{Int32Array, SharedArrayBuffer, Uint8Array};
 
 mod db;
 mod util;
+
+#[cfg(test)]
+pub mod tests;
+
 thread_local! {
     static INPUT_BUFFER: RefCell<Option<SharedArrayBuffer>> = const { RefCell::new(None) };
     static OUTPUT_BUFFER: RefCell<Option<SharedArrayBuffer>> = const { RefCell::new(None) };

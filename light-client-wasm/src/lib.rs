@@ -349,7 +349,7 @@ pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
     .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
     Ok((&ckb_jsonrpc_types::EstimateCycles {
         cycles: cycles.into(),
-    },)
+    })
         .serialize(&SERIALIZER)?)
 }
 

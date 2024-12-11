@@ -129,7 +129,7 @@ class LightClient {
      * @returns Estimate cycles
      */
     async estimateCycles(tx: TransactionLike): Promise<Num> {
-        return (await this.invokeLightClientCommand("estimate_cycles", [JsonRpcTransformers.transactionFrom(tx)]) as any).cycles;
+        return numFrom((await this.invokeLightClientCommand("estimate_cycles", [JsonRpcTransformers.transactionFrom(tx)]) as { cycles: Hex }).cycles);
     }
     /**
      * Returns the local node information.
