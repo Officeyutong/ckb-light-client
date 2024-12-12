@@ -69,8 +69,12 @@ class LightClient {
                     this.lightClientWorker.removeEventListener("message", resolveFn);
                     this.lightClientWorker.removeEventListener("error", errorFn);
                 }
-                const resolveFn = (evt: MessageEvent<any>) => {
-                    resolve(evt.data);
+                const resolveFn = (evt: MessageEvent<{ ok: true; data: any } | { ok: false; error: string; }>) => {
+                    if (evt.data.ok === true) {
+                        resolve(evt.data.data);
+                    } else {
+                        reject(evt.data.error);
+                    }
                     clean();
 
                 };

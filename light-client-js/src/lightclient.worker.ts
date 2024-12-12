@@ -16,7 +16,18 @@ onmessage = async (evt) => {
         return;
     }
     const data = evt.data as LightClientFunctionCall;
-    self.postMessage(((wasmModule as any)[data.name])(...evt.data.args))
+    try {
+        self.postMessage({
+            ok: true,
+            data: ((wasmModule as any)[data.name])(...evt.data.args)
+        })
+    } catch (e) {
+        self.postMessage({
+            ok: false,
+            error: `${e}`
+        })
+        console.error(e);
+    }
 };
 
 export { };
