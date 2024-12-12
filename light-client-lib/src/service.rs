@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::storage;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
-#[derive(Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Eq, PartialEq, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum SetScriptsCommand {
     // Replace all scripts with new scripts, non-exist scripts will be deleted
@@ -39,7 +39,7 @@ pub enum FetchStatus<T> {
     NotFound,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct ScriptStatus {
     pub script: Script,
     pub script_type: ScriptType,

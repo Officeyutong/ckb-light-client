@@ -26,7 +26,7 @@ use ckb_light_client_lib::{
     types::RunEnv,
     verify::verify_tx,
 };
-use log::debug;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::*;
@@ -477,7 +477,7 @@ pub fn set_scripts(
         .into_iter()
         .map(serde_wasm_bindgen::from_value::<ScriptStatus>)
         .collect::<Result<Vec<_>, _>>()?;
-
+    debug!("Update scripts, {:?}, {:?}", scripts, command);
     STORAGE_WITH_DATA
         .get()
         .unwrap()

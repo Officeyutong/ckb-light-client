@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
     sync::atomic::AtomicBool,
+    usize,
 };
 
 use super::super::{
@@ -367,11 +368,11 @@ impl Storage {
                 start_key_bound: key_prefix_clone.clone(),
                 order: CursorDirection::NextUnique,
                 take_while: Box::new(move |raw_key: &[u8]| raw_key.starts_with(&key_prefix_clone)),
-                limit: 1,
+                limit: usize::MAX,
                 skip: 0,
             })
             .unwrap();
-
+        debug!("raw get filter script response: {:#?}", value);
         if let DbCommandResponse::Iterator { kvs } = value {
             kvs.into_iter()
                 .map(|kv| (kv.key, kv.value))
