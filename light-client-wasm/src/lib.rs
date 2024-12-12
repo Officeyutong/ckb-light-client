@@ -26,7 +26,7 @@ use ckb_light_client_lib::{
     types::RunEnv,
     verify::verify_tx,
 };
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::*;
@@ -305,8 +305,9 @@ pub fn fetch_header(hash: &str) -> Result<JsValue, JsValue> {
         if missing {
             // re-fetch the header
             swc.add_fetch_header(block_hash, now);
-            return Ok((&FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound,)
-                .serialize(&SERIALIZER)?);
+            return Ok(
+                (&FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound).serialize(&SERIALIZER)?
+            );
         } else if first_sent > 0 {
             return Ok(FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetching {
                 first_sent: first_sent.into(),
@@ -1198,7 +1199,7 @@ pub fn fetch_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
         if missing {
             // re-fetch the transaction
             swc.add_fetch_tx(tx_hash, now);
-            return Ok((FetchStatus::<TransactionWithStatus>::NotFound,).serialize(&SERIALIZER)?);
+            return Ok((FetchStatus::<TransactionWithStatus>::NotFound).serialize(&SERIALIZER)?);
         } else if first_sent > 0 {
             return Ok((FetchStatus::<TransactionWithStatus>::Fetching {
                 first_sent: first_sent.into(),
