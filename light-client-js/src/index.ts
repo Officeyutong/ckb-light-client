@@ -3,6 +3,7 @@ import { FetchResponse, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, Script
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 import { Mutex } from "async-mutex";
+import { bytesFrom } from "@ckb-ccc/core";
 
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
 /**
@@ -174,13 +175,13 @@ class LightClient {
         searchKey: ClientIndexerSearchKeyLike,
         order?: "asc" | "desc",
         limit?: NumLike,
-        afterCursor?: string
+        afterCursor?: Hex
     ): Promise<ClientFindCellsResponse> {
         return JsonRpcTransformers.findCellsResponseTo(await this.invokeLightClientCommand("get_cells", [
             JsonRpcTransformers.indexerSearchKeyFrom(searchKey),
             cccOrderToLightClientWasmOrder(order ?? "asc"),
             Number(numFrom(numToHex(limit ?? 10))),
-            afterCursor
+            afterCursor ? bytesFrom(afterCursor) : afterCursor
         ]));
     }
     /**
@@ -195,7 +196,7 @@ class LightClient {
         searchKey: ClientIndexerSearchKeyTransactionLike,
         order?: "asc" | "desc",
         limit?: NumLike,
-        afterCursor?: string
+        afterCursor?: Hex
     ): Promise<GetTransactionsResponse<TxWithCell> | GetTransactionsResponse<TxWithCells>> {
         return lightClientGetTransactionsResultTo(await this.invokeLightClientCommand(
             "get_transactions",
@@ -203,7 +204,7 @@ class LightClient {
                 JsonRpcTransformers.indexerSearchKeyTransactionFrom(searchKey),
                 cccOrderToLightClientWasmOrder(order ?? "asc"),
                 Number(numFrom(numToHex(limit ?? 10))),
-                afterCursor
+                afterCursor ? bytesFrom(afterCursor) : afterCursor
             ]
         ));
     }

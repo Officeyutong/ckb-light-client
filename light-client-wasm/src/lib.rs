@@ -519,6 +519,10 @@ pub fn get_cells(
     if !status(0b1) {
         return Err(JsValue::from_str("light client not on start state"));
     }
+    debug!(
+        "Calling get_cells with {:?}, {:?}, {:?}, {:?}",
+        search_key, order, limit, after_cursor
+    );
     let search_key: SearchKey = serde_wasm_bindgen::from_value(search_key)?;
 
     let (prefix, from_key, direction, skip) = build_query_options(
@@ -560,6 +564,7 @@ pub fn get_cells(
     let mut cells = Vec::new();
     let mut last_key = Vec::new();
     for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
+        debug!("get cells iterator at {:?} {:?}", key, value);
         let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
         let output_index = u32::from_be_bytes(
             key[key.len() - 4..]
@@ -602,6 +607,7 @@ pub fn get_cells(
                         .as_slice()
                         .starts_with(prefix)
                     {
+                        debug!("skipped at {}", line!());
                         continue;
                     }
                 }
@@ -611,6 +617,7 @@ pub fn get_cells(
                             .as_slice()
                             .starts_with(prefix)
                     {
+                        debug!("skipped at {}", line!());
                         continue;
                     }
                 }
@@ -622,6 +629,7 @@ pub fn get_cells(
                 ScriptType::Lock => {
                     let script_len = extract_raw_data(&output.lock()).len();
                     if script_len < r0 || script_len > r1 {
+                        debug!("skipped at {}", line!());
                         continue;
                     }
                 }
@@ -632,6 +640,7 @@ pub fn get_cells(
                         .map(|script| extract_raw_data(&script).len())
                         .unwrap_or_default();
                     if script_len < r0 || script_len > r1 {
+                        debug!("skipped at {}", line!());
                         continue;
                     }
                 }
@@ -640,6 +649,7 @@ pub fn get_cells(
 
         if let Some([r0, r1]) = filter_output_data_len_range {
             if output_data.len() < r0 || output_data.len() >= r1 {
+                debug!("skipped at {}", line!());
                 continue;
             }
         }
@@ -647,19 +657,20 @@ pub fn get_cells(
         if let Some([r0, r1]) = filter_output_capacity_range {
             let capacity: core::Capacity = output.capacity().unpack();
             if capacity < r0 || capacity >= r1 {
+                debug!("skipped at {}", line!());
                 continue;
             }
         }
 
         if let Some([r0, r1]) = filter_block_range {
             if block_number < r0 || block_number >= r1 {
+                debug!("skipped at {}", line!());
                 continue;
             }
         }
 
         last_key = key.to_vec();
-
-        cells.push(Cell {
+        let cell_to_push = Cell {
             output: output.into(),
             output_data: if with_data {
                 Some(output_data.into())
@@ -669,9 +680,11 @@ pub fn get_cells(
             out_point: packed::OutPoint::new(tx_hash, output_index).into(),
             block_number: block_number.into(),
             tx_index: tx_index.into(),
-        });
+        };
+        debug!("pushed cell {:#?}", cell_to_push);
+        cells.push(cell_to_push);
     }
-
+    debug!("get_cells last_key={:?}", last_key);
     Ok((Pagination {
         objects: cells,
         last_cursor: JsonBytes::from_vec(last_key),

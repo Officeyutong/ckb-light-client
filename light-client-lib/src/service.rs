@@ -192,14 +192,14 @@ pub enum ScriptType {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum Order {
     Desc,
     Asc,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Cell {
     pub output: CellOutput,
     pub output_data: Option<JsonBytes>,
