@@ -117,8 +117,9 @@ class LightClient {
      * @param hash the block hash, equal to Vec<u8> in Rust
      * @returns HeaderView
      */
-    async getHeader(hash: HexLike): Promise<ClientBlockHeader> {
-        return JsonRpcTransformers.blockHeaderTo(await this.invokeLightClientCommand("get_header", [hexFrom(hash)]));
+    async getHeader(hash: HexLike): Promise<ClientBlockHeader | undefined> {
+        const resp = await this.invokeLightClientCommand("get_header", [hexFrom(hash)]);
+        return resp ? JsonRpcTransformers.blockHeaderTo(resp) : resp;
     }
     /**
      * Fetch a header from remote node. If return status is not_found will re-sent fetching request immediately.
