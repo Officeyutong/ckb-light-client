@@ -1,10 +1,14 @@
 import { numFrom } from "@ckb-ccc/core";
 import { Hex } from "@ckb-ccc/core";
 import { hexFrom } from "@ckb-ccc/core";
+import { Cell } from "@ckb-ccc/core";
+import { CellOutputLike } from "@ckb-ccc/core";
+import { BytesLike } from "@ckb-ccc/core";
+import { OutPointLike } from "@ckb-ccc/core";
 import { numToHex } from "@ckb-ccc/core";
 import { ClientBlockHeader } from "@ckb-ccc/core";
 import { ScriptLike } from "@ckb-ccc/core";
-import { JsonRpcBlockHeader, JsonRpcScript, JsonRpcTransaction, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
+import { JsonRpcBlockHeader, JsonRpcCellOutput, JsonRpcOutPoint, JsonRpcScript, JsonRpcTransaction, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 import { Num, Transaction } from "@ckb-ccc/core/barrel";
 
 interface WorkerInitializeOptions {
@@ -260,9 +264,48 @@ export function lightClientGetTransactionsResultTo(input: LightClientPagination<
             }))
         }) as GetTransactionsResponse<TxWithCells>
     }
-
-
 }
+
+interface LightClientGetCellsResponse {
+    last_cursor: string;
+    objects: {
+        out_point: JsonRpcOutPoint;
+        output: JsonRpcCellOutput;
+        output_data?: Hex;
+        block_number: Hex;
+        tx_index: Hex;
+    }[];
+}
+
+
+interface CellWithBlockNumAndTxIndex {
+    outPoint: OutPointLike;
+    cellOutput: CellOutputLike;
+    outputData: BytesLike;
+    blockNumber: Num;
+    txIndex: Num;
+};
+
+interface GetCellsResponse {
+    lastCursor: string;
+    cells: CellWithBlockNumAndTxIndex[];
+}
+
+
+
+export function getCellsResponseFrom(input: LightClientGetCellsResponse): GetCellsResponse {
+    return {
+        lastCursor: input.last_cursor,
+        cells: input.objects.map(item => ({
+            outPoint: JsonRpcTransformers.outPointTo(item.out_point),
+            cellOutput: JsonRpcTransformers.cellOutputTo(item.output),
+            outputData: item.output_data ?? "0x",
+            blockNumber: numFrom(item.block_number),
+            txIndex: numFrom(item.tx_index)
+        }))
+    }
+}
+
 export type {
     LightClientFunctionCall,
     WorkerInitializeOptions,
@@ -281,4 +324,6 @@ export type {
     TxWithCell,
     TxWithCells,
     GetTransactionsResponse,
+    CellWithBlockNumAndTxIndex,
+    GetCellsResponse
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "@jest/globals";
-import { cccOrderToLightClientWasmOrder, FetchResponse, GetTransactionsResponse, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientOrder, LightClientRemoteNode, LightClientScriptStatus, LightClientTxWithCell, LightClientTxWithCells, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, scriptStatusFrom, scriptStatusTo, transformFetchResponse, TxWithCell, TxWithCells } from "./types";
-import { Transaction } from "@ckb-ccc/core";
+import { cccOrderToLightClientWasmOrder, FetchResponse, GetCellsResponse, getCellsResponseFrom, GetTransactionsResponse, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientOrder, LightClientRemoteNode, LightClientScriptStatus, LightClientTxWithCell, LightClientTxWithCells, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, scriptStatusFrom, scriptStatusTo, transformFetchResponse, TxWithCell, TxWithCells } from "./types";
+import { CellOutput, OutPoint, Transaction } from "@ckb-ccc/core";
 test("test transform fetch response", () => {
     const a: FetchResponse<number> = { status: "fetched", data: 1 };
     const b: FetchResponse<number> = { status: "added", timestamp: 0n };
@@ -202,4 +202,47 @@ test("test lightClientGetTransactionsResultTo", () => {
             }
         ]
     } as GetTransactionsResponse<TxWithCells>);
+});
+
+test("test getCellsResponseFrom", () => {
+    const lhsValue = getCellsResponseFrom({
+        last_cursor: "0x12345678",
+        objects: [{
+            block_number: "0x2345",
+            tx_index: "0x9999",
+            out_point: {
+                index: "0x11112222",
+                tx_hash: "0x23456789"
+            },
+            output: {
+                capacity: "0x111",
+                lock: {
+                    args: "0x2345",
+                    code_hash: "0x2222",
+                    hash_type: "data"
+                }
+            }
+        }]
+    });
+    const rhsValue: GetCellsResponse = {
+        lastCursor: "0x12345678",
+        cells: [{
+            blockNumber: 9029n,
+            txIndex: 39321n,
+            outPoint: OutPoint.from({
+                index: 0x11112222n,
+                txHash: "0x23456789"
+            }),
+            outputData: "0x",
+            cellOutput: CellOutput.from({
+                capacity: 0x111n,
+                lock: {
+                    args: "0x2345",
+                    codeHash: "0x2222",
+                    hashType: "data"
+                }
+            })
+        }]
+    }
+    expect(lhsValue).toStrictEqual(rhsValue);
 });

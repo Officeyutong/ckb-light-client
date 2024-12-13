@@ -1,5 +1,5 @@
-import { ClientFindCellsResponse, ClientFindTransactionsGroupedResponse, ClientFindTransactionsResponse, ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core";
-import { FetchResponse, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus, NetworkSetting } from "./types";
+import { ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core";
+import { FetchResponse, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus, NetworkSetting, GetCellsResponse, getCellsResponseFrom } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 import { Mutex } from "async-mutex";
@@ -177,13 +177,14 @@ class LightClient {
         order?: "asc" | "desc",
         limit?: NumLike,
         afterCursor?: Hex
-    ): Promise<ClientFindCellsResponse> {
-        return JsonRpcTransformers.findCellsResponseTo(await this.invokeLightClientCommand("get_cells", [
+    ): Promise<GetCellsResponse> {
+        const resp = await this.invokeLightClientCommand("get_cells", [
             JsonRpcTransformers.indexerSearchKeyFrom(searchKey),
             cccOrderToLightClientWasmOrder(order ?? "asc"),
             Number(numFrom(numToHex(limit ?? 10))),
             afterCursor ? bytesFrom(afterCursor) : afterCursor
-        ]));
+        ]);
+        return getCellsResponseFrom(resp);
     }
     /**
      * See https://github.com/nervosnetwork/ckb-indexer#get_transactions
