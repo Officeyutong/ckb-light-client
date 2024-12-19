@@ -8,6 +8,8 @@ use light_client_db_common::{
 };
 use log::debug;
 
+use crate::STORE_NAME;
+
 async fn open_iterator(
     store: &ObjectStore,
     start_key_bound: &[u8],
@@ -283,19 +285,17 @@ where
     Ok(result)
 }
 
-pub(crate) async fn open_database(store_name: impl AsRef<str>) -> anyhow::Result<Database> {
+pub(crate) async fn open_database(database_name: impl AsRef<str>) -> anyhow::Result<Database> {
     let factory = Factory::new().map_err(|e| anyhow!("Failed to create db factory: {:?}", e))?;
     let mut open_request = factory
-        .open("ckb-light-client", Some(1))
+        .open(database_name.as_ref(), Some(1))
         .map_err(|e| anyhow!("Failed to send db open request: {:?}", e))?;
-    let store_name = store_name.as_ref().to_owned();
-    let new_store_name = store_name.clone();
     open_request.on_upgrade_needed(move |event| {
         let database = event.database().unwrap();
         let store_params = ObjectStoreParams::new();
 
         let store = database
-            .create_object_store(&new_store_name, store_params)
+            .create_object_store(STORE_NAME, store_params)
             .unwrap();
         let mut index_params = IndexParams::new();
         index_params.unique(true);

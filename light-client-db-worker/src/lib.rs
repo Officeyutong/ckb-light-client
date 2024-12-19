@@ -42,6 +42,8 @@ pub fn set_shared_array(input: JsValue, output: JsValue) {
     });
 }
 
+const STORE_NAME: &str = "main-store";
+
 #[wasm_bindgen]
 /// Enter the main loop of db worker. Once entered, db worker will read commands from input buffer (previously set by set_shared_array), handle it, and write response to output buffer.
 /// log_level - Level of logs, such as `debug`, `info`.
@@ -61,7 +63,7 @@ pub async fn main_loop(log_level: &str) {
         (Int32Array::new(buf), Uint8Array::new(buf))
     });
 
-    let mut db: Option<(Database, String)> = None;
+    let mut db: Option<Database> = None;
 
     loop {
         let cmd = wait_for_command(&input_i32_arr, InputCommand::Waiting)
@@ -71,11 +73,11 @@ pub async fn main_loop(log_level: &str) {
         input_i32_arr.set_index(0, InputCommand::Waiting as i32);
         match cmd {
             InputCommand::OpenDatabase => {
-                let store_name =
+                let database_name =
                     read_command_payload::<String>(&input_i32_arr, &input_u8_arr).unwrap();
-                match open_database(&store_name).await {
+                match open_database(&database_name).await {
                     Ok(o) => {
-                        db = Some((o, store_name));
+                        db = Some(o);
                         write_command_with_payload(
                             OutputCommand::OpenDatabaseResponse as i32,
                             true,
@@ -95,8 +97,8 @@ pub async fn main_loop(log_level: &str) {
             }
             InputCommand::DbRequest => {
                 let db_cmd = read_command_payload(&input_i32_arr, &input_u8_arr).unwrap();
-                let (db, store_name) = db.as_ref().expect("Database not opened yet");
-                let result = handle_db_command(db, store_name, db_cmd, |buf| {
+                let db = db.as_ref().expect("Database not opened yet");
+                let result = handle_db_command(db, STORE_NAME, db_cmd, |buf| {
                     input_i32_arr.set_index(0, InputCommand::Waiting as i32);
                     debug!("Invoking request take while with args {:?}", buf);
                     write_command_with_payload(

@@ -12,19 +12,19 @@ repository = "https://github.com/nervosnetwork/ckb-light-client"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ckb-app-config = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-constant = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-network = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-error = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-script = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-traits = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-resource = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-verification = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-hash = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-app-config = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-constant = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-types = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-network = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-jsonrpc-types = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-error = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-script = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-chain-spec = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-traits = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-resource = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-verification = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-hash = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-systemtime = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
 
 log = "0.4.14"
 path-clean = "0.1.0"
@@ -45,8 +45,6 @@ anyhow = "1.0.56"
 thiserror = "1.0.30"
 toml = "0.5.8"
 tokio = { version = "1.20" }
-idb = "0.6"
-serde-wasm-bindgen = "0.6.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rocksdb = { package = "ckb-rocksdb", version = "=0.21.1", features = [
@@ -66,11 +64,11 @@ console_error_panic_hook = { version = "0.1.7" }
 wasm-bindgen-test = "0.3.45"
 
 [dev-dependencies]
-ckb-shared = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-chain = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-tx-pool = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-store = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48", features = [
+ckb-shared = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-chain = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-tx-pool = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-store = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc" }
+ckb-systemtime = { git = "https://github.com/Officeyutong/ckb", rev = "b428fbc", features = [
     "enable_faketime",
 ] }
 tempfile = "3.0"
