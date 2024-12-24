@@ -1,0 +1,9 @@
+{
+    "private": true,
+    "name": "ckb-light-client",
+    "workspaces": [
+        "./light-client-db-worker",
+        "./light-client-wasm",
+        "./light-client-js"
+    ]
+}
