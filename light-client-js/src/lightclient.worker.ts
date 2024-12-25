@@ -11,7 +11,7 @@ onmessage = async (evt) => {
         wasmModule.set_shared_array(data.inputBuffer, data.outputBuffer);
         wasmModule.set_trace_shared_array_buffer(data.traceLogBuffer);
         wasmModule.enable_trace_record_callback();
-        await wasmModule.light_client(data.networkFlag, data.logLevel);
+        await wasmModule.light_client(data.networkFlag, data.logLevel, data.networkSecretKey);
         self.postMessage({});
         loaded = true;
         return;

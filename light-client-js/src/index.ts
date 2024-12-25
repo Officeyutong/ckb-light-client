@@ -17,7 +17,7 @@ class LightClient {
     private commandInvokeLock: Mutex
     private traceLogBuffer: SharedArrayBuffer
     private stopping: boolean = false;
-    private traceLogCallback: (value: TraceRecord) => void | null;
+    private traceLogCallback: (value: TraceRecord) => void | null = null;
     /**
      * Construct a LightClient instance.
      * inputBuffer and outputBuffer are buffers used for transporting data between database and light client. Set them to appropriate sizes.
@@ -45,7 +45,7 @@ class LightClient {
      * @param networkSetting Network setting for light-client-wasm. You can specify config if you are using mainnet or testnet. You must provide config and spec if you are using devnet.
      * @param logLevel Log Level for light-client-db-worker and light-client-wasm
      */
-    async start(networkSetting: NetworkSetting, logLevel: "trace" | "debug" | "info" | "error" = "info") {
+    async start(networkSetting: NetworkSetting, networkSecretKey: Hex, logLevel: "trace" | "debug" | "info" | "error" = "info") {
         this.dbWorker.postMessage({
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
@@ -56,7 +56,8 @@ class LightClient {
             outputBuffer: this.outputBuffer,
             networkFlag: networkSetting,
             logLevel: logLevel,
-            traceLogBuffer: this.traceLogBuffer
+            traceLogBuffer: this.traceLogBuffer,
+            networkSecretKey: bytesFrom(networkSecretKey)
         } as LightClientWorkerInitializeOptions);
         await new Promise<void>((res, rej) => {
             this.dbWorker.onmessage = () => res();
@@ -278,3 +279,13 @@ class LightClient {
 }
 
 export default LightClient;
+
+/**
+ * Generate a random network secret key.
+ * @returns The secret key.
+ */
+export function randomSecretKey(): Hex {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    return hexFrom(arr);
+}

@@ -80,7 +80,11 @@ enum NetworkSetting {
 }
 
 #[wasm_bindgen]
-pub async fn light_client(net_flag: JsValue, log_level: String) -> Result<(), JsValue> {
+pub async fn light_client(
+    network_setting: JsValue,
+    log_level: String,
+    network_secret_key: JsValue,
+) -> Result<(), JsValue> {
     if !status(0b0) {
         return Err(JsValue::from_str("Can't start twice"));
     }
@@ -88,7 +92,7 @@ pub async fn light_client(net_flag: JsValue, log_level: String) -> Result<(), Js
     wasm_logger::init(wasm_logger::Config::new(
         log::Level::from_str(&log_level).expect("Bad log level"),
     ));
-    let network_flag: NetworkSetting = serde_wasm_bindgen::from_value(net_flag)?;
+    let network_flag: NetworkSetting = serde_wasm_bindgen::from_value(network_setting)?;
 
     let mut config = match &network_flag {
         NetworkSetting::TestNet { config } => config
@@ -121,8 +125,8 @@ pub async fn light_client(net_flag: JsValue, log_level: String) -> Result<(), Js
 
     let pending_txs = Arc::new(RwLock::new(PendingTxs::default()));
     let max_outbound_peers = config.network.max_outbound_peers;
-    let network_secret_key = ckb_app_config::generate_random_key();
-    // Users need to generate and save this secret key by themselves, otherwise the service cannot be started.
+    let network_secret_key =
+        serde_wasm_bindgen::from_value(network_secret_key).expect("Invalid network secret key");
     config.network.secret_key = network_secret_key;
     let network_state = NetworkState::from_config(config.network)
         .await
