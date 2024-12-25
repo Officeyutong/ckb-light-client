@@ -1,5 +1,5 @@
 import { ClientIndexerSearchKeyLike, ClientIndexerSearchKeyTransactionLike, ClientTransactionResponse } from "@ckb-ccc/core";
-import { FetchResponse, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus, NetworkSetting, GetCellsResponse, getCellsResponseFrom } from "./types";
+import { FetchResponse, LocalNode, localNodeTo, RemoteNode, remoteNodeTo, ScriptStatus, scriptStatusFrom, scriptStatusTo, LightClientSetScriptsCommand, transformFetchResponse, cccOrderToLightClientWasmOrder, GetTransactionsResponse, TxWithCell, TxWithCells, lightClientGetTransactionsResultTo, LightClientLocalNode, LightClientRemoteNode, LightClientScriptStatus, NetworkSetting, GetCellsResponse, getCellsResponseFrom, WorkerInitializeOptions, LightClientWorkerInitializeOptions, TraceRecord } from "./types";
 import { ClientBlock, ClientBlockHeader, Hex, hexFrom, HexLike, Num, numFrom, NumLike, numToHex, TransactionLike } from "@ckb-ccc/core/barrel";
 import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedBarrel";
 import { Mutex } from "async-mutex";
@@ -15,6 +15,9 @@ class LightClient {
     private inputBuffer: SharedArrayBuffer
     private outputBuffer: SharedArrayBuffer
     private commandInvokeLock: Mutex
+    private traceLogBuffer: SharedArrayBuffer
+    private stopping: boolean = false;
+    private traceLogCallback: (value: TraceRecord) => void | null;
     /**
      * Construct a LightClient instance.
      * inputBuffer and outputBuffer are buffers used for transporting data between database and light client. Set them to appropriate sizes.
@@ -26,9 +29,17 @@ class LightClient {
         this.lightClientWorker = new Worker(new URL("./lightclient.worker.ts", import.meta.url), { type: "module" });
         this.inputBuffer = new SharedArrayBuffer(inputBufferSize);
         this.outputBuffer = new SharedArrayBuffer(outputBufferSize);
+        this.traceLogBuffer = new SharedArrayBuffer(10 * 1024);
         this.commandInvokeLock = new Mutex();
-
     }
+    /**
+     * Set a callback to receive trace log records
+     * @param cb The callback
+     */
+    setTraceLogCallback(cb: (value: TraceRecord) => void) {
+        this.traceLogCallback = cb;
+    }
+
     /**
      * Start the light client.
      * @param networkSetting Network setting for light-client-wasm. You can specify config if you are using mainnet or testnet. You must provide config and spec if you are using devnet.
@@ -44,8 +55,9 @@ class LightClient {
             inputBuffer: this.inputBuffer,
             outputBuffer: this.outputBuffer,
             networkFlag: networkSetting,
-            logLevel: logLevel
-        });
+            logLevel: logLevel,
+            traceLogBuffer: this.traceLogBuffer
+        } as LightClientWorkerInitializeOptions);
         await new Promise<void>((res, rej) => {
             this.dbWorker.onmessage = () => res();
             this.dbWorker.onerror = (evt) => rej(evt);
@@ -54,6 +66,25 @@ class LightClient {
             this.lightClientWorker.onmessage = () => res();
             this.lightClientWorker.onerror = (evt) => rej(evt);
         });
+        (async () => {
+            while (!this.stopping) {
+                const i32arr = new Int32Array(this.traceLogBuffer);
+                const u8arr = new Uint8Array(this.traceLogBuffer);
+                const resp = Atomics.waitAsync(i32arr, 0, 0);
+                if (resp.async) {
+                    await resp.value;
+                }
+                if (i32arr[0] === 1) {
+                    const length = i32arr[1];
+                    const data = u8arr.slice(8, 8 + length);
+                    const decoded = JSON.parse(new TextDecoder().decode(data));
+                    if (this.traceLogCallback !== null) this.traceLogCallback(decoded);
+                    i32arr[0] = 0;
+                    Atomics.notify(i32arr, 0);
+                }
+            }
+            console.log("Exiting trace log fetcher..");
+        })();
     }
     private invokeLightClientCommand(name: string, args?: any[]): Promise<any> {
         // Why use lock here?
@@ -94,9 +125,10 @@ class LightClient {
      * Stop the light client instance.
      */
     async stop() {
-        await this.invokeLightClientCommand("stop");
+        // await this.invokeLightClientCommand("stop");
         this.dbWorker.terminate();
         this.lightClientWorker.terminate();
+        this.stopping = true;
     }
     /**
      * Returns the header with the highest block number in the canonical chain

@@ -16,7 +16,7 @@
     ],
     "allowSyntheticDefaultImports": true,
     "lib": [
-      "ES2017",
+      "ES2024",
       "WebWorker"
     ],
     "moduleResolution": "bundler"

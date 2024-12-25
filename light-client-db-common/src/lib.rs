@@ -177,6 +177,32 @@ pub fn write_command_with_payload<T: Serialize>(
     Atomics::notify(i32arr, 0).map_err(|e| anyhow!("Failed to notify: {e:?}"))?;
     Ok(())
 }
+
+/// Fill a input buffer/output buffer with a [`crate::InputCommand`]/[`crate::OutputCommand`] and the buffer
+/// The buffer would be in 4byte command + 4byte payload length + payload. The payload will be encoded in JSON.
+///
+/// cmd: Command in i32
+/// data: The payload of command
+/// i32arr: Int32Array view of the buffer
+/// u8arr: Uint8Array view of the buffer
+pub fn write_command_with_payload_json<T: Serialize>(
+    cmd: i32,
+    data: T,
+    i32arr: &Int32Array,
+    u8arr: &Uint8Array,
+) -> anyhow::Result<()> {
+    let result_buf = serde_json::to_vec(&data)
+        .with_context(|| anyhow!("Failed to serialize command payload"))?;
+
+    i32arr.set_index(1, result_buf.len() as i32);
+    u8arr
+        .subarray(8, 8 + result_buf.len() as u32)
+        .copy_from(&result_buf);
+    i32arr.set_index(0, cmd);
+    Atomics::notify(i32arr, 0).map_err(|e| anyhow!("Failed to notify: {e:?}"))?;
+    Ok(())
+}
+
 /// Read the payload from the given input buffer/output buffer
 /// i32arr: Int32Array view of the buffer
 /// u8arr: Uint8Array view of the buffer

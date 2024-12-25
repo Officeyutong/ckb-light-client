@@ -8,8 +8,9 @@ onmessage = async (evt) => {
     const wasmModule = (await import("light-client-wasm")).default;
     if (!loaded) {
         const data = evt.data as LightClientWorkerInitializeOptions;
-
         wasmModule.set_shared_array(data.inputBuffer, data.outputBuffer);
+        wasmModule.set_trace_shared_array_buffer(data.traceLogBuffer);
+        wasmModule.enable_trace_record_callback();
         await wasmModule.light_client(data.networkFlag, data.logLevel);
         self.postMessage({});
         loaded = true;

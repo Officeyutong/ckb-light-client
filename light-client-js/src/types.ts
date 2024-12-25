@@ -21,6 +21,7 @@ interface DbWorkerInitializeOptions extends WorkerInitializeOptions {
 
 interface LightClientWorkerInitializeOptions extends WorkerInitializeOptions {
     networkFlag: NetworkSetting;
+    traceLogBuffer: SharedArrayBuffer;
 };
 
 interface LightClientFunctionCall {
@@ -306,6 +307,18 @@ export function getCellsResponseFrom(input: LightClientGetCellsResponse): GetCel
     }
 }
 
+type TraceRecord = {
+    type: "DownloadBlock";
+    start_at: number;
+    count: number;
+    matched_count: number;
+
+} | {
+    type: "FinalizeCheckPoints";
+    count: number;
+    stop_at: number;
+};
+
 export type {
     LightClientFunctionCall,
     WorkerInitializeOptions,
@@ -325,5 +338,6 @@ export type {
     TxWithCells,
     GetTransactionsResponse,
     CellWithBlockNumAndTxIndex,
-    GetCellsResponse
+    GetCellsResponse,
+    TraceRecord
 }
