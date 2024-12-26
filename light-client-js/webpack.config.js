@@ -7,9 +7,10 @@ module.exports = {
         path: path.resolve(__dirname, 'dist'),
         filename: 'index.js',
         library: {
-            type: "module",
+            type: "umd",
         },
-        globalObject: "globalThis"
+        globalObject: "globalThis",
+        iife: true
     },
     module: {
         rules: [

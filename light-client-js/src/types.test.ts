@@ -3,7 +3,7 @@ import { cccOrderToLightClientWasmOrder, FetchResponse, GetCellsResponse, getCel
 import { CellOutput, OutPoint, Transaction } from "@ckb-ccc/core";
 test("test transform fetch response", () => {
     const a: FetchResponse<number> = { status: "fetched", data: 1 };
-    const b: FetchResponse<number> = { status: "added", timestamp: 0n };
+    const b: FetchResponse<number> = { status: "added", timestamp: BigInt("0") };
     const fn = (a: number) => a + 1;
     expect(transformFetchResponse(a, fn)).toStrictEqual({ status: "fetched", data: 2 });
     expect(transformFetchResponse(b, fn)).toStrictEqual(b);
@@ -29,11 +29,11 @@ test("test remoteNodeTo", () => {
         version: "1",
         node_id: "111",
         addresses: [
-            { address: "test", score: 123n }
+            { address: "test", score:BigInt("123") }
         ],
-        connected_duration: 234n,
+        connected_duration:BigInt("234"),
         protocols: [
-            { id: 1n, version: "1" }
+            { id: BigInt("1"), version: "1" }
         ],
         sync_state: {
             proved_best_known_header: {
@@ -56,31 +56,31 @@ test("test remoteNodeTo", () => {
         version: "1",
         nodeId: "111",
         addresses: [
-            { address: "test", score: 123n }
+            { address: "test", score:BigInt("123") }
         ],
-        connestedDuration: 234n,
+        connestedDuration:BigInt("234"),
         protocols: [
-            { id: 1n, version: "1" }
+            { id: BigInt("1"), version: "1" }
         ],
         syncState: {
             provedBestKnownHeader: {
-                compactTarget: 0x12n,
+                compactTarget: BigInt("0x12"),
                 dao: {
-                    c: 924126743650684932n,
-                    ar: 10000000000000000n,
-                    s: 61369863014n,
-                    u: 504116301100000000n
+                    c: BigInt("924126743650684932"),
+                    ar: BigInt("10000000000000000"),
+                    s: BigInt("61369863014"),
+                    u: BigInt("504116301100000000")
                 },
-                epoch: [3355443n, 8738n, 4369n],
+                epoch: [BigInt("3355443"), BigInt("8738"), BigInt("4369")],
                 extraHash: "0x45",
                 hash: "0x56",
-                nonce: 0x67n,
-                number: 0x78n,
+                nonce: BigInt("0x67"),
+                number: BigInt("0x78"),
                 parentHash: "0x89",
                 proposalsHash: "0x90",
-                timestamp: 0xabn,
+                timestamp: BigInt("0xab"),
                 transactionsRoot: "0xbc",
-                version: 0xcdn
+                version: BigInt("0xcd")
             },
             requestedBestKnownHeader: undefined
         }
@@ -94,24 +94,24 @@ test("test localNodeTo", () => {
         node_id: "bbb",
         active: false,
         addresses: [
-            { address: "111", score: 123n }
+            { address: "111", score:BigInt("123") }
         ],
         protocols: [
-            { id: 1n, name: "test", support_version: ["a", "b", "c"] }
+            { id: BigInt("1"), name: "test", support_version: ["a", "b", "c"] }
         ],
-        connections: 123n
+        connections:BigInt("123")
     }
     const expectedVal: LocalNode = {
         version: "aaa",
         nodeId: "bbb",
         active: false,
         addresses: [
-            { address: "111", score: 123n }
+            { address: "111", score:BigInt("123") }
         ],
         protocols: [
-            { id: 1n, name: "test", supportVersion: ["a", "b", "c"] }
+            { id: BigInt("1"), name: "test", supportVersion: ["a", "b", "c"] }
         ],
-        connections: 123n
+        connections:BigInt("123")
     };
     expect(localNodeTo(raw)).toStrictEqual(expectedVal);
 });
@@ -145,8 +145,8 @@ test("test lightClientGetTransactionsResultTo", () => {
         lastCursor: "0x1234",
         transactions: [
             {
-                blockNumber: 0x1234n,
-                ioIndex: 1234n,
+                blockNumber: BigInt("0x1234"),
+                ioIndex: BigInt("1234"),
                 ioType: "input",
                 transaction: Transaction.from({
                     cellDeps: [],
@@ -154,10 +154,10 @@ test("test lightClientGetTransactionsResultTo", () => {
                     inputs: [],
                     outputs: [],
                     outputsData: [],
-                    version: 0x123n,
+                    version: BigInt("0x123"),
                     witnesses: ["0x"]
                 }),
-                txIndex: 2222n
+                txIndex: BigInt("2222")
             }
         ]
     } as GetTransactionsResponse<TxWithCell>);
@@ -185,15 +185,15 @@ test("test lightClientGetTransactionsResultTo", () => {
         lastCursor: "0x1234",
         transactions: [
             {
-                blockNumber: 0x1234n,
-                txIndex: 123n,
+                blockNumber: BigInt("0x1234"),
+                txIndex: BigInt("123"),
                 transaction: Transaction.from({
                     cellDeps: [],
                     headerDeps: [],
                     inputs: [],
                     outputs: [],
                     outputsData: [],
-                    version: 0x123n,
+                    version: BigInt("0x123"),
                     witnesses: ["0x"]
                 }),
                 cells: [
@@ -227,15 +227,15 @@ test("test getCellsResponseFrom", () => {
     const rhsValue: GetCellsResponse = {
         lastCursor: "0x12345678",
         cells: [{
-            blockNumber: 9029n,
-            txIndex: 39321n,
+            blockNumber: BigInt("9029"),
+            txIndex: BigInt("39321"),
             outPoint: OutPoint.from({
-                index: 0x11112222n,
+                index: BigInt("0x11112222"),
                 txHash: "0x23456789"
             }),
             outputData: "0x",
             cellOutput: CellOutput.from({
-                capacity: 0x111n,
+                capacity: BigInt("0x111"),
                 lock: {
                     args: "0x2345",
                     codeHash: "0x2222",
