@@ -278,7 +278,7 @@ class LightClient {
 
 }
 
-export default LightClient;
+export { LightClient };
 
 /**
  * Generate a random network secret key.

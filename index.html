@@ -4,13 +4,13 @@
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.4/dist/jquery.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.css">
     <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
+    <script src="./light-client-js/dist/index.js"></script>
     <script type="module">
-        import LightClient from "./light-client-js/dist/index.js";
-        console.log(LightClient);
+        console.log(CkbLightClient.LightClient);
         window.initWorkers = async (spec = "./test/config.toml") => {
             const config = await (await fetch(spec)).text();
             $("#init-button").addClass("loading");
-            const client = new LightClient();
+            const client = new CkbLightClient.LightClient();
             window.client = client;
             await client.start(
                 {

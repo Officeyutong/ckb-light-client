@@ -9,7 +9,7 @@ module.exports = {
         filename: 'index.js',
         library: {
             type: "umd",
-            name: "light-client-js",
+            name: "CkbLightClient",
             umdNamedDefine: true
         },
         globalObject: "globalThis",
