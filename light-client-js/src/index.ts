@@ -264,7 +264,7 @@ class LightClient {
      * @param txHash the transaction hash
      * @returns 
      */
-    async getTransaction(txHash: HexLike): Promise<ClientTransactionResponse> {
+    async getTransaction(txHash: HexLike): Promise<ClientTransactionResponse | undefined> {
         return JsonRpcTransformers.transactionResponseTo(await this.invokeLightClientCommand("get_transaction", [hexFrom(txHash)]));
     }
     /**
