@@ -20,10 +20,17 @@ async fn open_iterator(
     Ok(index
         .open_cursor(
             Some(
-                KeyRange::lower_bound(
-                    &serde_wasm_bindgen::to_value(&start_key_bound).unwrap(),
-                    Some(false),
-                )
+                match order {
+                    CursorDirection::NextUnique => KeyRange::lower_bound(
+                        &serde_wasm_bindgen::to_value(&start_key_bound).unwrap(),
+                        Some(false),
+                    ),
+                    CursorDirection::PrevUnique => KeyRange::upper_bound(
+                        &serde_wasm_bindgen::to_value(&start_key_bound).unwrap(),
+                        Some(false),
+                    ),
+                    _ => unreachable!(),
+                }
                 .unwrap()
                 .into(),
             ),
