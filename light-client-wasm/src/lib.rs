@@ -747,14 +747,14 @@ pub fn get_transactions(
 
     let storage = STORAGE_WITH_DATA.get().unwrap().storage();
 
-    let kvs: Vec<_> = storage.collect_iterator(
-        from_key,
-        direction,
-        Box::new(move |key| key.starts_with(&prefix)),
-        limit,
-        skip,
-    );
     if search_key.group_by_transaction.unwrap_or_default() {
+        let kvs: Vec<_> = storage.collect_iterator(
+            from_key,
+            direction,
+            Box::new(move |key| key.starts_with(&prefix)),
+            u32::MAX as usize,
+            skip,
+        );
         let mut tx_with_cells: Vec<TxWithCells> = Vec::new();
         let mut last_key = Vec::new();
 
@@ -870,6 +870,13 @@ pub fn get_transactions(
         })
         .serialize(&SERIALIZER)?)
     } else {
+        let kvs: Vec<_> = storage.collect_iterator(
+            from_key,
+            direction,
+            Box::new(move |key| key.starts_with(&prefix)),
+            limit,
+            skip,
+        );
         let mut last_key = Vec::new();
         let mut txs = Vec::new();
         for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
