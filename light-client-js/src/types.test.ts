@@ -29,9 +29,9 @@ test("test remoteNodeTo", () => {
         version: "1",
         node_id: "111",
         addresses: [
-            { address: "test", score:BigInt("123") }
+            { address: "test", score: BigInt("123") }
         ],
-        connected_duration:BigInt("234"),
+        connected_duration: "0x234",
         protocols: [
             { id: BigInt("1"), version: "1" }
         ],
@@ -56,9 +56,9 @@ test("test remoteNodeTo", () => {
         version: "1",
         nodeId: "111",
         addresses: [
-            { address: "test", score:BigInt("123") }
+            { address: "test", score: BigInt("123") }
         ],
-        connestedDuration:BigInt("234"),
+        connestedDuration: BigInt("0x234"),
         protocols: [
             { id: BigInt("1"), version: "1" }
         ],
@@ -94,24 +94,24 @@ test("test localNodeTo", () => {
         node_id: "bbb",
         active: false,
         addresses: [
-            { address: "111", score:BigInt("123") }
+            { address: "111", score: BigInt("123") }
         ],
         protocols: [
             { id: BigInt("1"), name: "test", support_version: ["a", "b", "c"] }
         ],
-        connections:BigInt("123")
+        connections: BigInt("123")
     }
     const expectedVal: LocalNode = {
         version: "aaa",
         nodeId: "bbb",
         active: false,
         addresses: [
-            { address: "111", score:BigInt("123") }
+            { address: "111", score: BigInt("123") }
         ],
         protocols: [
             { id: BigInt("1"), name: "test", supportVersion: ["a", "b", "c"] }
         ],
-        connections:BigInt("123")
+        connections: BigInt("123")
     };
     expect(localNodeTo(raw)).toStrictEqual(expectedVal);
 });

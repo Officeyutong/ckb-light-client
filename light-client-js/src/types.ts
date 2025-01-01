@@ -2,6 +2,7 @@ import { numFrom } from "@ckb-ccc/core";
 import { Hex } from "@ckb-ccc/core";
 import { CellOutputLike } from "@ckb-ccc/core";
 import { BytesLike } from "@ckb-ccc/core";
+import { HexLike } from "@ckb-ccc/core";
 import { OutPointLike } from "@ckb-ccc/core";
 import { numToHex } from "@ckb-ccc/core";
 import { ClientBlockHeader } from "@ckb-ccc/core";
@@ -102,7 +103,7 @@ interface LightClientRemoteNode {
     version: string;
     node_id: string;
     addresses: NodeAddress[];
-    connected_duration: Num;
+    connected_duration: HexLike;
     sync_state?: LightClientPeerSyncState;
     protocols: RemoteNodeProtocol[];
 
@@ -120,7 +121,7 @@ interface RemoteNode {
 export function remoteNodeTo(input: LightClientRemoteNode): RemoteNode {
     return ({
         addresses: input.addresses,
-        connestedDuration: input.connected_duration,
+        connestedDuration: numFrom(input.connected_duration),
         nodeId: input.node_id,
         protocols: input.protocols,
         version: input.version,
@@ -318,7 +319,7 @@ type TraceRecord = {
     stop_at: number;
 };
 
-export type {
+export {
     LightClientFunctionCall,
     WorkerInitializeOptions,
     DbWorkerInitializeOptions,
