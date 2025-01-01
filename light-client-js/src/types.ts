@@ -1,7 +1,5 @@
 import { numFrom } from "@ckb-ccc/core";
 import { Hex } from "@ckb-ccc/core";
-import { hexFrom } from "@ckb-ccc/core";
-import { Cell } from "@ckb-ccc/core";
 import { CellOutputLike } from "@ckb-ccc/core";
 import { BytesLike } from "@ckb-ccc/core";
 import { OutPointLike } from "@ckb-ccc/core";
@@ -340,5 +338,7 @@ export type {
     GetTransactionsResponse,
     CellWithBlockNumAndTxIndex,
     GetCellsResponse,
-    TraceRecord
+    TraceRecord,
+    Num,
+    Transaction
 }
