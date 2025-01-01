@@ -290,7 +290,4 @@ export function randomSecretKey(): Hex {
     return hexFrom(arr);
 }
 
-export {
-    LightClientSetScriptsCommand,
-    LightClientOrder
-}
+export * from "./types";
