@@ -748,122 +748,132 @@ pub fn get_transactions(
     let storage = STORAGE_WITH_DATA.get().unwrap().storage();
 
     if search_key.group_by_transaction.unwrap_or_default() {
-        let kvs: Vec<_> = storage.collect_iterator(
+        let prefix_cloned = prefix.clone();
+        let mut kvs: Vec<_> = storage.collect_iterator(
             from_key,
             direction,
-            Box::new(move |key| key.starts_with(&prefix)),
-            u32::MAX as usize,
+            Box::new(move |key| key.starts_with(&prefix_cloned)),
+            100,
             skip,
         );
         let mut tx_with_cells: Vec<TxWithCells> = Vec::new();
         let mut last_key = Vec::new();
 
-        for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
-            let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
-            if tx_with_cells.len() == limit
-                && tx_with_cells.last_mut().unwrap().transaction.hash != tx_hash.unpack()
-            {
-                break;
-            }
-            last_key = key.to_vec();
-            let tx = packed::Transaction::from_slice(
-                &storage
-                    .get(Key::TxHash(&tx_hash).into_vec())
-                    .expect("get tx should be OK")
-                    .expect("stored tx")[12..],
-            )
-            .expect("from stored tx slice should be OK");
+        'outer: while !kvs.is_empty() {
+            for (key, value) in kvs.into_iter().map(|kv| (kv.key, kv.value)) {
+                let tx_hash = packed::Byte32::from_slice(&value).expect("stored tx hash");
+                if tx_with_cells.len() == limit
+                    && tx_with_cells.last_mut().unwrap().transaction.hash != tx_hash.unpack()
+                {
+                    break 'outer;
+                }
+                last_key = key.to_vec();
+                let tx = packed::Transaction::from_slice(
+                    &storage
+                        .get(Key::TxHash(&tx_hash).into_vec())
+                        .expect("get tx should be OK")
+                        .expect("stored tx")[12..],
+                )
+                .expect("from stored tx slice should be OK");
 
-            let block_number = u64::from_be_bytes(
-                key[key.len() - 17..key.len() - 9]
-                    .try_into()
-                    .expect("stored block_number"),
-            );
-            let tx_index = u32::from_be_bytes(
-                key[key.len() - 9..key.len() - 5]
-                    .try_into()
-                    .expect("stored tx_index"),
-            );
-            let io_index = u32::from_be_bytes(
-                key[key.len() - 5..key.len() - 1]
-                    .try_into()
-                    .expect("stored io_index"),
-            );
-            let io_type = if *key.last().expect("stored io_type") == 0 {
-                CellType::Input
-            } else {
-                CellType::Output
-            };
-
-            if let Some(filter_script) = filter_script.as_ref() {
-                let filter_script_matched = match filter_script_type {
-                    ScriptType::Lock => storage
-                        .get(
-                            Key::TxLockScript(
-                                filter_script,
-                                block_number,
-                                tx_index,
-                                io_index,
-                                match io_type {
-                                    CellType::Input => storage::CellType::Input,
-                                    CellType::Output => storage::CellType::Output,
-                                },
-                            )
-                            .into_vec(),
-                        )
-                        .expect("get TxLockScript should be OK")
-                        .is_some(),
-                    ScriptType::Type => storage
-                        .get(
-                            Key::TxTypeScript(
-                                filter_script,
-                                block_number,
-                                tx_index,
-                                io_index,
-                                match io_type {
-                                    CellType::Input => storage::CellType::Input,
-                                    CellType::Output => storage::CellType::Output,
-                                },
-                            )
-                            .into_vec(),
-                        )
-                        .expect("get TxTypeScript should be OK")
-                        .is_some(),
+                let block_number = u64::from_be_bytes(
+                    key[key.len() - 17..key.len() - 9]
+                        .try_into()
+                        .expect("stored block_number"),
+                );
+                let tx_index = u32::from_be_bytes(
+                    key[key.len() - 9..key.len() - 5]
+                        .try_into()
+                        .expect("stored tx_index"),
+                );
+                let io_index = u32::from_be_bytes(
+                    key[key.len() - 5..key.len() - 1]
+                        .try_into()
+                        .expect("stored io_index"),
+                );
+                let io_type = if *key.last().expect("stored io_type") == 0 {
+                    CellType::Input
+                } else {
+                    CellType::Output
                 };
 
-                if !filter_script_matched {
-                    continue;
-                }
-            }
+                if let Some(filter_script) = filter_script.as_ref() {
+                    let filter_script_matched = match filter_script_type {
+                        ScriptType::Lock => storage
+                            .get(
+                                Key::TxLockScript(
+                                    filter_script,
+                                    block_number,
+                                    tx_index,
+                                    io_index,
+                                    match io_type {
+                                        CellType::Input => storage::CellType::Input,
+                                        CellType::Output => storage::CellType::Output,
+                                    },
+                                )
+                                .into_vec(),
+                            )
+                            .expect("get TxLockScript should be OK")
+                            .is_some(),
+                        ScriptType::Type => storage
+                            .get(
+                                Key::TxTypeScript(
+                                    filter_script,
+                                    block_number,
+                                    tx_index,
+                                    io_index,
+                                    match io_type {
+                                        CellType::Input => storage::CellType::Input,
+                                        CellType::Output => storage::CellType::Output,
+                                    },
+                                )
+                                .into_vec(),
+                            )
+                            .expect("get TxTypeScript should be OK")
+                            .is_some(),
+                    };
 
-            if let Some([r0, r1]) = filter_block_range {
-                if block_number < r0 || block_number >= r1 {
-                    continue;
-                }
-            }
-
-            let last_tx_hash_is_same = tx_with_cells
-                .last_mut()
-                .map(|last| {
-                    if last.transaction.hash == tx_hash.unpack() {
-                        last.cells.push((io_type.clone(), io_index.into()));
-                        true
-                    } else {
-                        false
+                    if !filter_script_matched {
+                        continue;
                     }
-                })
-                .unwrap_or_default();
+                }
 
-            if !last_tx_hash_is_same {
-                tx_with_cells.push(TxWithCells {
-                    transaction: tx.into_view().into(),
-                    block_number: block_number.into(),
-                    tx_index: tx_index.into(),
-                    cells: vec![(io_type, io_index.into())],
-                });
+                if let Some([r0, r1]) = filter_block_range {
+                    if block_number < r0 || block_number >= r1 {
+                        continue;
+                    }
+                }
+
+                let last_tx_hash_is_same = tx_with_cells
+                    .last_mut()
+                    .map(|last| {
+                        if last.transaction.hash == tx_hash.unpack() {
+                            last.cells.push((io_type.clone(), io_index.into()));
+                            true
+                        } else {
+                            false
+                        }
+                    })
+                    .unwrap_or_default();
+
+                if !last_tx_hash_is_same {
+                    tx_with_cells.push(TxWithCells {
+                        transaction: tx.into_view().into(),
+                        block_number: block_number.into(),
+                        tx_index: tx_index.into(),
+                        cells: vec![(io_type, io_index.into())],
+                    });
+                }
             }
+            let prefix_cloned = prefix.clone();
+            kvs = storage.collect_iterator(
+                last_key.clone(),
+                direction,
+                Box::new(move |key| key.starts_with(&prefix_cloned)),
+                100,
+                1,
+            );
         }
-
         Ok((Pagination {
             objects: tx_with_cells.into_iter().map(Tx::Grouped).collect(),
             last_cursor: JsonBytes::from_vec(last_key),
