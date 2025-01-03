@@ -12,19 +12,19 @@ repository = "https://github.com/nervosnetwork/ckb-light-client"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ckb-app-config = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-constant = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-types = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-network = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-error = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-script = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-traits = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-resource = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-verification = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-hash = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
+ckb-app-config = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-constant = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-network = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-error = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-script = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-traits = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-resource = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-verification = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-hash = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
 
 log = "0.4.14"
 path-clean = "0.1.0"
@@ -65,11 +65,11 @@ serde_json = "1.0.134"
 wasm-bindgen-test = "0.3.45"
 
 [dev-dependencies]
-ckb-shared = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-chain = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-tx-pool = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-store = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb", rev = "ea4d105", features = [
+ckb-shared = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-chain = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-tx-pool = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-store = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c", features = [
     "enable_faketime",
 ] }
 tempfile = "3.0"

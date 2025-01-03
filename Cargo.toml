@@ -13,9 +13,3 @@ resolver = "2"
 
 [profile.release]
 overflow-checks = true
-
-
-[patch.crates-io]
-tentacle = { git = "https://github.com/nervosnetwork/tentacle", rev = "22cc9bb" }
-tentacle-multiaddr = { git = "https://github.com/nervosnetwork/tentacle", rev = "22cc9bb" }
-tentacle-secio = { git = "https://github.com/nervosnetwork/tentacle", rev = "22cc9bb" }
