@@ -10,7 +10,9 @@ await esbuild.build({
     entryPoints: ["./src/index.ts"],
     bundle: true,
     outdir: "dist",
-    plugins: [polyfillNode(), inlineWorkerPlugin(), dtsPlugin({ tsconfig })],
+    plugins: [polyfillNode(), inlineWorkerPlugin({
+        format: "iife"
+    }), dtsPlugin({ tsconfig })],
     target: [
         "esnext"
     ],
