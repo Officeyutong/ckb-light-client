@@ -4,9 +4,12 @@
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.4/dist/jquery.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.css">
     <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.5.0/dist/semantic.min.js"></script>
-    <script src="./light-client-js/dist/index.js"></script>
-    <script>
-        console.log(CkbLightClient.LightClient);
+    <!-- <script src="./light-client-js/dist/index.js"></script> -->
+    <script type="module">
+        import * as CkbLightClient from "./light-client-js/dist/index.js";
+        const LightClient = CkbLightClient.LightClient;
+        console.log(LightClient);
+        console.log(CkbLightClient);
         window.initWorkers = async (spec = "./test/config.toml") => {
             const config = await (await fetch(spec)).text();
             $("#init-button").addClass("loading");

@@ -5,6 +5,9 @@ import { JsonRpcBlockHeader, JsonRpcTransformers } from "@ckb-ccc/core/advancedB
 import { Mutex } from "async-mutex";
 import { bytesFrom } from "@ckb-ccc/core";
 
+import DbWorker from "./db.worker.ts";
+import LightClientWorker from "./lightclient.worker.ts";
+
 const DEFAULT_BUFFER_SIZE = 50 * (1 << 20);
 /**
  * A LightClient instance
@@ -25,8 +28,10 @@ class LightClient {
      * @param outputBufferSize Size of outputBuffer
      */
     constructor(inputBufferSize = DEFAULT_BUFFER_SIZE, outputBufferSize = DEFAULT_BUFFER_SIZE) {
-        this.dbWorker = new Worker(new URL("./db.worker.ts", import.meta.url), { type: "module" });
-        this.lightClientWorker = new Worker(new URL("./lightclient.worker.ts", import.meta.url), { type: "module" });
+        // this.dbWorker = new Worker(new URL("./db.worker.ts?inline", import.meta.url), { type: "module" });
+        // this.lightClientWorker = new Worker(new URL("./lightclient.worker.ts?inline", import.meta.url), { type: "module" });
+        this.dbWorker = new DbWorker();
+        this.lightClientWorker = new LightClientWorker();
         this.inputBuffer = new SharedArrayBuffer(inputBufferSize);
         this.outputBuffer = new SharedArrayBuffer(outputBufferSize);
         this.traceLogBuffer = new SharedArrayBuffer(10 * 1024);

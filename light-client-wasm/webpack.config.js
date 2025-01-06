@@ -9,7 +9,9 @@ module.exports = {
         filename: 'index.js',
         library: {
             type: "module",
-        }
+        },
+        publicPath: "/",
+        chunkFormat: false
     },
     plugins: [
         new WasmPackPlugin({

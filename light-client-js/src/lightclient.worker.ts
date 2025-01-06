@@ -1,11 +1,11 @@
 import { LightClientFunctionCall, LightClientWorkerInitializeOptions } from "./types";
-
+import wasmModule from "light-client-wasm";
 onerror = err => {
     console.error(err);
 }
 let loaded = false;
 onmessage = async (evt) => {
-    const wasmModule = (await import("light-client-wasm")).default;
+    // const wasmModule = (await import("light-client-wasm")).default;
     if (!loaded) {
         const data = evt.data as LightClientWorkerInitializeOptions;
         wasmModule.set_shared_array(data.inputBuffer, data.outputBuffer);
