@@ -20,12 +20,15 @@
       "WebWorker",
       "ESNext"
     ],
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "emitDeclarationOnly": true
   },
   "exclude": [
     "webpack.config.js",
     "dist/**",
     "node_modules/**",
-    "jest.config.js"
+    "jest.config.js",
+    "esbuild.config.*"
   ]
 }

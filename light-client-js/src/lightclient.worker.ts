@@ -5,7 +5,6 @@ onerror = err => {
 }
 let loaded = false;
 onmessage = async (evt) => {
-    // const wasmModule = (await import("light-client-wasm")).default;
     if (!loaded) {
         const data = evt.data as LightClientWorkerInitializeOptions;
         wasmModule.set_shared_array(data.inputBuffer, data.outputBuffer);
@@ -31,4 +30,4 @@ onmessage = async (evt) => {
     }
 };
 
-export { };
+export default {} as typeof Worker & { new(): Worker };
