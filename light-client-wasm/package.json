@@ -1,5 +1,5 @@
 {
-    "name": "light-client-wasm",
+    "name": "ckb-light-client-wasm",
     "scripts": {
         "build-debug": "webpack --mode=development",
         "build": "webpack --mode=production",

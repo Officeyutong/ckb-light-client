@@ -3,8 +3,8 @@ members = [
     "light-client-lib",
     # "light-client-bin",
     "light-client-wasm",
-    "light-client-db-worker",
-    "light-client-db-common",
+    "./wasm/light-client-db-worker",
+    "./wasm/light-client-db-common",
 ]
 exclude = ["light-client-bin"]
 

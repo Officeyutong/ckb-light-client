@@ -1,5 +1,5 @@
 import { LightClientFunctionCall, LightClientWorkerInitializeOptions } from "./types";
-import wasmModule from "light-client-wasm";
+import wasmModule from "ckb-light-client-wasm";
 onerror = err => {
     console.error(err);
 }
