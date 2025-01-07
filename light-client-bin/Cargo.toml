@@ -9,15 +9,15 @@ homepage = "https://github.com/nervosnetwork/ckb-light-client"
 repository = "https://github.com/nervosnetwork/ckb-light-client"
 
 [dependencies]
-ckb-async-runtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-network = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-stop-handler = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-resource = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-traits = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "80cfe48" }
+ckb-async-runtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-network = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-stop-handler = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-resource = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-types = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-traits = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
+ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb.git", rev = "b8cb85c" }
 
 ckb-light-client-lib = { path = "../light-client-lib" }
 clap = { version = "4", features = ["cargo"] }
@@ -32,7 +32,6 @@ rocksdb = { package = "ckb-rocksdb", version = "=0.21.1", features = [
 ], default-features = false }
 env_logger = "0.11"
 anyhow = "1.0.56"
-cacache = { version = "13.1.0" }
 
 [dev-dependencies]
 rand = "0.8"

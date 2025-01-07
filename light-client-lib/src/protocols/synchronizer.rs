@@ -11,7 +11,6 @@ use super::BAD_MESSAGE_BAN_TIME;
 use crate::protocols::Peers;
 use crate::storage::Storage;
 use crate::utils::network::prove_or_download_matched_blocks;
-use crate::wasm_utils;
 
 pub struct SyncProtocol {
     storage: Storage,
@@ -90,11 +89,13 @@ impl CKBProtocolHandler for SyncProtocol {
                         db_blocks.len()
                     );
                     #[cfg(target_arch = "wasm32")]
-                    wasm_utils::send_trace_record(&wasm_utils::TraceRecord::DownloadBlock {
-                        start_at: start_number,
-                        count: blocks_count,
-                        matched_count: db_blocks.len(),
-                    });
+                    crate::wasm_utils::send_trace_record(
+                        &crate::wasm_utils::TraceRecord::DownloadBlock {
+                            start_at: start_number,
+                            count: blocks_count,
+                            matched_count: db_blocks.len(),
+                        },
+                    );
                     // update storage
                     for block in blocks {
                         assert!(db_blocks.contains(&block.header().calc_header_hash()));

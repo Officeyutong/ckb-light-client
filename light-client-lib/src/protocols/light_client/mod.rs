@@ -45,12 +45,9 @@ use super::{
     BAD_MESSAGE_BAN_TIME,
 };
 
+use crate::protocols::{GET_BLOCKS_PROOF_LIMIT, GET_TRANSACTIONS_PROOF_LIMIT, LAST_N_BLOCKS};
 use crate::storage::Storage;
 use crate::utils::network::prove_or_download_matched_blocks;
-use crate::{
-    protocols::{GET_BLOCKS_PROOF_LIMIT, GET_TRANSACTIONS_PROOF_LIMIT, LAST_N_BLOCKS},
-    wasm_utils,
-};
 
 pub struct LightClientProtocol {
     storage: Storage,
@@ -697,10 +694,12 @@ impl LightClientProtocol {
                 index, new_last_cpindex, check_point
             );
             #[cfg(target_arch = "wasm32")]
-            wasm_utils::send_trace_record(&wasm_utils::TraceRecord::FinalizeCheckPoints {
-                count: index,
-                stop_at: new_last_cpindex,
-            });
+            crate::wasm_utils::send_trace_record(
+                &crate::wasm_utils::TraceRecord::FinalizeCheckPoints {
+                    count: index,
+                    stop_at: new_last_cpindex,
+                },
+            );
             let (_, check_points) = peers_with_data.into_values().next().expect("always exists");
             self.storage
                 .update_check_points(last_cpindex + 1, &check_points[1..=index]);

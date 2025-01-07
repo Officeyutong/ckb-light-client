@@ -1,12 +1,12 @@
 [workspace]
 members = [
     "light-client-lib",
-    # "light-client-bin",
+    "light-client-bin",
     "light-client-wasm",
     "./wasm/light-client-db-worker",
     "./wasm/light-client-db-common",
 ]
-exclude = ["light-client-bin"]
+# exclude = ["light-client-bin"]
 
 resolver = "2"
 
