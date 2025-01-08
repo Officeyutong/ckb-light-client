@@ -1,6 +1,6 @@
 {
   "name": "ckb-light-client-js",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "dist/index.js",
   "license": "MIT",
   "devDependencies": {
@@ -27,5 +27,6 @@
   },
   "exports": {
     ".": "./dist/index.js"
-  }
+  },
+  "type": "module"
 }
