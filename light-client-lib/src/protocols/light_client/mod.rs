@@ -693,13 +693,6 @@ impl LightClientProtocol {
                 "finalize {} new check points, stop at index {}, value {:#x}",
                 index, new_last_cpindex, check_point
             );
-            #[cfg(target_arch = "wasm32")]
-            crate::wasm_utils::send_trace_record(
-                &crate::wasm_utils::TraceRecord::FinalizeCheckPoints {
-                    count: index,
-                    stop_at: new_last_cpindex,
-                },
-            );
             let (_, check_points) = peers_with_data.into_values().next().expect("always exists");
             self.storage
                 .update_check_points(last_cpindex + 1, &check_points[1..=index]);

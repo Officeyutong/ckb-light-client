@@ -20,7 +20,6 @@ interface DbWorkerInitializeOptions extends WorkerInitializeOptions {
 
 interface LightClientWorkerInitializeOptions extends WorkerInitializeOptions {
     networkFlag: NetworkSetting;
-    traceLogBuffer: SharedArrayBuffer;
     networkSecretKey: Uint8Array
 };
 

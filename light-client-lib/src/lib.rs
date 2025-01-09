@@ -11,6 +11,3 @@ pub mod storage;
 pub mod types;
 pub mod utils;
 pub mod verify;
-
-#[cfg(target_arch = "wasm32")]
-pub mod wasm_utils;

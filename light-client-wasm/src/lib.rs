@@ -355,7 +355,7 @@ pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
     Ok(ckb_jsonrpc_types::EstimateCycles {
         cycles: cycles.into(),
     }
-        .serialize(&SERIALIZER)?)
+    .serialize(&SERIALIZER)?)
 }
 
 const MAX_ADDRS: usize = 50;

@@ -3,7 +3,6 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
     sync::atomic::AtomicBool,
-    usize,
 };
 
 use super::super::{

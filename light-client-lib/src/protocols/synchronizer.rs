@@ -88,14 +88,6 @@ impl CKBProtocolHandler for SyncProtocol {
                         blocks_count,
                         db_blocks.len()
                     );
-                    #[cfg(target_arch = "wasm32")]
-                    crate::wasm_utils::send_trace_record(
-                        &crate::wasm_utils::TraceRecord::DownloadBlock {
-                            start_at: start_number,
-                            count: blocks_count,
-                            matched_count: db_blocks.len(),
-                        },
-                    );
                     // update storage
                     for block in blocks {
                         assert!(db_blocks.contains(&block.header().calc_header_hash()));
