@@ -310,7 +310,7 @@ pub fn fetch_header(hash: &str) -> Result<JsValue, JsValue> {
             // re-fetch the header
             swc.add_fetch_header(block_hash, now);
             return Ok(
-                (&FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound).serialize(&SERIALIZER)?
+                FetchStatus::<ckb_jsonrpc_types::HeaderView>::NotFound.serialize(&SERIALIZER)?
             );
         } else if first_sent > 0 {
             return Ok(FetchStatus::<ckb_jsonrpc_types::HeaderView>::Fetching {
@@ -352,9 +352,9 @@ pub fn estimate_cycles(tx: JsValue) -> Result<JsValue, JsValue> {
         &swc.storage().get_last_state().1.into_view(),
     )
     .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
-    Ok((&ckb_jsonrpc_types::EstimateCycles {
+    Ok(ckb_jsonrpc_types::EstimateCycles {
         cycles: cycles.into(),
-    })
+    }
         .serialize(&SERIALIZER)?)
 }
 

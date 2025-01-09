@@ -10,19 +10,17 @@ use super::super::{
     BlockNumber, Byte32, CellType, Script, ScriptStatus, ScriptType, SetScriptsCommand,
 };
 use anyhow::{anyhow, bail, Context};
+
 use ckb_types::{
     core::{
         cell::{CellMeta, CellStatus},
-        TransactionInfo,
+        HeaderView, TransactionInfo,
     },
-    packed::{CellOutput, OutPoint},
-    prelude::{IntoHeaderView, IntoTransactionView, Reader, Unpack},
-};
-
-use ckb_types::{core::HeaderView, prelude::Builder};
-use ckb_types::{
-    packed::{self, Block, Header, Transaction},
-    prelude::{Entity, FromSliceShouldBeOk, IntoBlockView, Pack, PackVec},
+    packed::{self, Block, CellOutput, Header, OutPoint, Transaction},
+    prelude::{
+        Builder, Entity, FromSliceShouldBeOk, IntoBlockView, IntoHeaderView, IntoTransactionView,
+        Pack, PackVec, Reader, Unpack,
+    },
     utilities::{build_filter_data, calc_filter_hash},
     U256,
 };

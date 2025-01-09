@@ -39,9 +39,9 @@ impl<'a> From<DBPinnableSlice<'a>> for PinnedSlice<'a> {
     }
 }
 
-impl<'a> AsRef<[u8]> for PinnedSlice<'a> {
+impl AsRef<[u8]> for PinnedSlice<'_> {
     fn as_ref(&self) -> &[u8] {
-        &self.inner.as_ref()
+        self.inner.as_ref()
     }
 }
 
@@ -82,7 +82,7 @@ impl Storage {
             .map_err(Into::into)
     }
 
-    fn get_pinned<'a, K>(&'a self, key: K) -> Result<Option<PinnedSlice<'a>>>
+    fn get_pinned<K>(&self, key: K) -> Result<Option<PinnedSlice<'_>>>
     where
         K: AsRef<[u8]>,
     {
@@ -280,7 +280,7 @@ impl Storage {
             Direction::Forward => key_prefix.clone(),
             Direction::Reverse => {
                 let mut key = key_prefix.clone();
-                key.extend(u64::max_value().to_be_bytes());
+                key.extend(u64::MAX.to_be_bytes());
                 key
             }
         };
@@ -507,7 +507,7 @@ pub struct Batch {
 
 impl Batch {
     fn put_kv<K: Into<Vec<u8>>, V: Into<Vec<u8>>>(&mut self, key: K, value: V) -> Result<()> {
-        self.put(&Into::<Vec<u8>>::into(key), &Into::<Vec<u8>>::into(value))
+        self.put(Into::<Vec<u8>>::into(key), Into::<Vec<u8>>::into(value))
     }
 
     fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(&mut self, key: K, value: V) -> Result<()> {
@@ -741,7 +741,7 @@ impl Storage {
             )
             .expect("batch put should be ok");
         let tx_hash = tx.calc_tx_hash();
-        let tx_index = u32::max_value();
+        let tx_index = u32::MAX;
         let key = Key::TxHash(&tx_hash).into_vec();
         let value = Value::Transaction(block_number, tx_index as TxIndex, tx);
         batch.put_kv(key, value).expect("batch put should be ok");

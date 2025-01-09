@@ -91,7 +91,7 @@ impl<'a> WrappedBlockView<'a> {
     }
 }
 
-impl<'a> FilterDataProvider for WrappedBlockView<'a> {
+impl FilterDataProvider for WrappedBlockView<'_> {
     fn cell(&self, out_point: &OutPoint) -> Option<CellOutput> {
         self.index.get(&out_point.tx_hash()).and_then(|tx_index| {
             self.inner
@@ -394,7 +394,7 @@ pub enum KeyPrefix {
     Meta = 224,
 }
 
-impl<'a> Key<'a> {
+impl Key<'_> {
     pub fn into_vec(self) -> Vec<u8> {
         self.into()
     }
