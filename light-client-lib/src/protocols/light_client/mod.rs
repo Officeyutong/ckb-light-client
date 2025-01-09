@@ -100,7 +100,7 @@ impl CKBProtocolHandler for LightClientProtocol {
 
     async fn disconnected(&mut self, _nc: BoxedCKBProtocolContext, peer_index: PeerIndex) {
         info!("LightClient.disconnected peer={}", peer_index);
-        self.peers().remove_peer(peer_index);
+        self.peers().remove_peer(peer_index).await;
     }
 
     async fn received(&mut self, nc: BoxedCKBProtocolContext, peer_index: PeerIndex, data: Bytes) {
@@ -122,7 +122,9 @@ impl CKBProtocolHandler for LightClientProtocol {
 
         let item_name = msg.item_name();
         let status = self.try_process(&nc, peer_index, msg).await;
-        status.process(nc, self.peers(), peer_index, "LightClient", item_name);
+        status
+            .process(nc, self.peers(), peer_index, "LightClient", item_name)
+            .await;
     }
 
     async fn notify(&mut self, nc: BoxedCKBProtocolContext, token: u64) {

@@ -54,17 +54,6 @@ impl<'a> BlockFiltersProcess<'a> {
             return Status::ok();
         };
 
-        #[cfg(target_arch = "wasm32")]
-        let mut matched_blocks = self.filter.peers.matched_blocks().write().await;
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let mut matched_blocks = self
-            .filter
-            .peers
-            .matched_blocks()
-            .write()
-            .expect("poisoned");
-
         let block_filters = self.message.to_entity();
         let start_number: BlockNumber = block_filters.start_number().unpack();
         let filters_count = block_filters.filters().len();
@@ -115,8 +104,13 @@ impl<'a> BlockFiltersProcess<'a> {
         let (mut parent_block_filter_hash, expected_block_filter_hashes) =
             if start_number <= finalized_check_point_number {
                 // Use cached block filter hashes to check the block filters.
+                #[cfg(target_arch = "wasm32")]
+                let (cached_check_point_index, mut cached_block_filter_hashes) =
+                    self.filter.peers.get_cached_block_filter_hashes().await;
+                #[cfg(not(target_arch = "wasm32"))]
                 let (cached_check_point_index, mut cached_block_filter_hashes) =
                     self.filter.peers.get_cached_block_filter_hashes();
+
                 let cached_check_point_number = self
                     .filter
                     .peers
@@ -222,47 +216,64 @@ impl<'a> BlockFiltersProcess<'a> {
         let actual_blocks_count = blocks_count.min(limit);
         let tip_header = self.filter.storage.get_tip_header();
         let filtered_block_number = start_number - 1 + actual_blocks_count as BlockNumber;
+        // Use these braces to avoid holding `matched_blocks` across `.await`
+        {
+            #[cfg(target_arch = "wasm32")]
+            let mut matched_blocks = self.filter.peers.matched_blocks().write().await;
 
-        if possible_match_blocks_len != 0 {
-            let blocks = possible_match_blocks
-                .iter()
-                .map(|block_hash| (block_hash.clone(), block_hash == &prove_state_block_hash))
-                .collect::<Vec<_>>();
-            self.filter.storage.add_matched_blocks(
-                start_number,
-                actual_blocks_count as u64,
-                blocks,
-            );
-            let option = matched_blocks.is_empty();
-            if option {
-                if let Some((_start_number, _blocks_count, db_blocks)) =
-                    self.filter.storage.get_earliest_matched_blocks()
-                {
-                    self.filter
-                        .peers
-                        .add_matched_blocks(&mut matched_blocks, db_blocks);
-                    prove_or_download_matched_blocks(
-                        Arc::clone(&self.filter.peers),
-                        &tip_header,
-                        &matched_blocks,
-                        self.nc.as_ref(),
-                        INIT_BLOCKS_IN_TRANSIT_PER_PEER,
-                    );
+            #[cfg(not(target_arch = "wasm32"))]
+            let mut matched_blocks = self
+                .filter
+                .peers
+                .matched_blocks()
+                .write()
+                .expect("poisoned");
+            if possible_match_blocks_len != 0 {
+                let blocks = possible_match_blocks
+                    .iter()
+                    .map(|block_hash| (block_hash.clone(), block_hash == &prove_state_block_hash))
+                    .collect::<Vec<_>>();
+                self.filter.storage.add_matched_blocks(
+                    start_number,
+                    actual_blocks_count as u64,
+                    blocks,
+                );
+                let option = matched_blocks.is_empty();
+                if option {
+                    if let Some((_start_number, _blocks_count, db_blocks)) =
+                        self.filter.storage.get_earliest_matched_blocks()
+                    {
+                        self.filter
+                            .peers
+                            .add_matched_blocks(&mut matched_blocks, db_blocks);
+                        prove_or_download_matched_blocks(
+                            Arc::clone(&self.filter.peers),
+                            &tip_header,
+                            &matched_blocks,
+                            self.nc.as_ref(),
+                            INIT_BLOCKS_IN_TRANSIT_PER_PEER,
+                        );
+                    }
                 }
+            } else if matched_blocks.is_empty() {
+                self.filter
+                    .storage
+                    .update_block_number(filtered_block_number)
             }
-        } else if matched_blocks.is_empty() {
-            self.filter
-                .storage
-                .update_block_number(filtered_block_number)
         }
-
+        #[cfg(target_arch = "wasm32")]
+        self.filter
+            .update_min_filtered_block_number(filtered_block_number)
+            .await;
+        #[cfg(not(target_arch = "wasm32"))]
         self.filter
             .update_min_filtered_block_number(filtered_block_number);
 
         let could_request_more_block_filters = self
             .filter
             .peers
-            .could_request_more_block_filters(finalized_check_point_index, filtered_block_number);
+            .could_request_more_block_filters(finalized_check_point_index, filtered_block_number)
+            .await;
         if could_request_more_block_filters {
             // send next batch GetBlockFilters message to a random best peer
             let best_peer = self
@@ -280,7 +291,7 @@ impl<'a> BlockFiltersProcess<'a> {
         } else {
             // if couldn't request more block filters,
             // check if could request more block filter hashes.
-            self.filter.try_send_get_block_filter_hashes(self.nc);
+            self.filter.try_send_get_block_filter_hashes(self.nc).await;
         }
 
         Status::ok()

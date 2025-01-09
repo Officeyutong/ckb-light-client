@@ -8,7 +8,7 @@ use ckb_types::{packed, prelude::*};
 use linked_hash_map::LinkedHashMap;
 use log::{debug, trace, warn};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 #[cfg(target_arch = "wasm32")]
@@ -24,7 +24,10 @@ pub struct RelayProtocol {
     // Record the peers which have opened the relay protocol, value is used to close the protocol in the inactive period
     opened_peers: HashMap<PeerIndex, Option<Instant>>,
     // Pending transactions which are waiting for relay
-    pending_txs: Arc<RwLock<PendingTxs>>,
+    #[cfg(target_arch = "wasm32")]
+    pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
     consensus: Consensus,
     storage: Storage,
     v3: bool,
@@ -87,8 +90,26 @@ impl PendingTxs {
 }
 
 impl RelayProtocol {
+    #[cfg(target_arch = "wasm32")]
     pub fn new(
-        pending_txs: Arc<RwLock<PendingTxs>>,
+        pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
+        connected_peers: Arc<Peers>,
+        consensus: Consensus,
+        storage: Storage,
+        v3: bool,
+    ) -> Self {
+        Self {
+            opened_peers: HashMap::new(),
+            pending_txs,
+            connected_peers,
+            consensus,
+            storage,
+            v3,
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new(
+        pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
         connected_peers: Arc<Peers>,
         consensus: Consensus,
         storage: Storage,
@@ -165,17 +186,32 @@ impl CKBProtocolHandler for RelayProtocol {
             debug!("peer={} is ckb2023 enabled, ignore", peer);
             return;
         }
+        #[cfg(target_arch = "wasm32")]
+        let flag = self
+            .pending_txs
+            .read()
+            .await
+            .is_not_empty_and_updated_at(60);
 
-        if self
+        #[cfg(not(target_arch = "wasm32"))]
+        let flag = self
             .pending_txs
             .read()
             .unwrap()
-            .is_not_empty_and_updated_at(60)
-        {
+            .is_not_empty_and_updated_at(60);
+
+        if flag {
             let peer_id = nc
                 .get_peer(peer)
                 .and_then(|p| extract_peer_id(&p.connected_addr))
                 .unwrap();
+            #[cfg(target_arch = "wasm32")]
+            let tx_hashes = self
+                .pending_txs
+                .write()
+                .await
+                .fetch_transaction_hashes_for_broadcast(peer_id);
+            #[cfg(not(target_arch = "wasm32"))]
             let tx_hashes = self
                 .pending_txs
                 .write()
@@ -229,6 +265,9 @@ impl CKBProtocolHandler for RelayProtocol {
             message.item_name()
         );
         if let packed::RelayMessageUnionReader::GetRelayTransactions(reader) = message {
+            #[cfg(target_arch = "wasm32")]
+            let pending_txs = self.pending_txs.read().await;
+            #[cfg(not(target_arch = "wasm32"))]
             let pending_txs = self.pending_txs.read().expect("read access should be OK");
             let relay_txs: Vec<_> = reader
                 .tx_hashes()
@@ -265,13 +304,21 @@ impl CKBProtocolHandler for RelayProtocol {
             CHECK_PENDING_TXS_TOKEN => {
                 // we check pending txs every 2 seconds, if the timestamp of the pending txs is updated in the last minute
                 // and connected relay protocol peers is empty, we try to open the protocol and broadcast the pending txs
-                if self
+                #[cfg(target_arch = "wasm32")]
+                let flag = self
+                    .pending_txs
+                    .read()
+                    .await
+                    .is_not_empty_and_updated_at(60);
+
+                #[cfg(not(target_arch = "wasm32"))]
+                let flag = self
                     .pending_txs
                     .read()
                     .unwrap()
-                    .is_not_empty_and_updated_at(60)
-                    && self.opened_peers.is_empty()
-                {
+                    .is_not_empty_and_updated_at(60);
+
+                if flag && self.opened_peers.is_empty() {
                     let p2p_control = nc.p2p_control().expect("p2p_control should be exist");
                     for peer in self.connected_peers.get_peers_index() {
                         if let Err(err) = p2p_control.open_protocol(peer, nc.protocol_id()) {
@@ -282,6 +329,9 @@ impl CKBProtocolHandler for RelayProtocol {
                         }
                     }
                 } else {
+                    #[cfg(target_arch = "wasm32")]
+                    let mut pending_txs = self.pending_txs.write().await;
+                    #[cfg(not(target_arch = "wasm32"))]
                     let mut pending_txs = self.pending_txs.write().unwrap();
                     for (&peer, instant) in self.opened_peers.iter_mut() {
                         if let Some(peer_id) = nc

@@ -11,7 +11,6 @@ use golomb_coded_set::{GCSFilterReader, SipHasher24Builder, M, P};
 use log::{debug, info, log_enabled, trace, warn, Level};
 use rand::seq::SliceRandom as _;
 use std::io::Cursor;
-use std::sync::RwLock;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 use std::{sync::Arc, time::Duration};
@@ -31,7 +30,10 @@ const GET_BLOCK_FILTERS_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct FilterProtocol {
     pub(crate) storage: Storage,
     pub(crate) peers: Arc<Peers>,
-    pub(crate) last_ask_time: Arc<RwLock<Option<Instant>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) last_ask_time: Arc<std::sync::RwLock<Option<Instant>>>,
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) last_ask_time: Arc<tokio::sync::RwLock<Option<Instant>>>,
 }
 
 impl FilterProtocol {
@@ -39,7 +41,7 @@ impl FilterProtocol {
         Self {
             storage,
             peers,
-            last_ask_time: Arc::new(RwLock::new(None)),
+            last_ask_time: Arc::new(Default::default()),
         }
     }
 
@@ -81,20 +83,35 @@ impl FilterProtocol {
             .collect()
     }
 
-    fn should_ask(&self, immediately: bool) -> bool {
-        !self.storage.is_filter_scripts_empty()
+    async fn should_ask(&self, immediately: bool) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        let result = !self.storage.is_filter_scripts_empty()
+            && (immediately
+                || self.last_ask_time.read().await.is_none()
+                || self.last_ask_time.read().await.unwrap().elapsed() > GET_BLOCK_FILTERS_TIMEOUT);
+        #[cfg(not(target_arch = "wasm32"))]
+        let result = !self.storage.is_filter_scripts_empty()
             && (immediately
                 || self.last_ask_time.read().unwrap().is_none()
                 || self.last_ask_time.read().unwrap().unwrap().elapsed()
-                    > GET_BLOCK_FILTERS_TIMEOUT)
-    }
+                    > GET_BLOCK_FILTERS_TIMEOUT);
 
+        result
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub async fn update_min_filtered_block_number(&self, block_number: BlockNumber) {
+        self.storage.update_min_filtered_block_number(block_number);
+        self.peers
+            .update_min_filtered_block_number(block_number)
+            .await;
+        self.last_ask_time.write().await.replace(Instant::now());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn update_min_filtered_block_number(&self, block_number: BlockNumber) {
         self.storage.update_min_filtered_block_number(block_number);
         self.peers.update_min_filtered_block_number(block_number);
         self.last_ask_time.write().unwrap().replace(Instant::now());
     }
-
     pub(crate) async fn try_send_get_block_filters(
         &self,
         nc: BoxedCKBProtocolContext,
@@ -103,16 +120,24 @@ impl FilterProtocol {
         let min_filtered_block_number = self.storage.get_min_filtered_block_number();
         let start_number = min_filtered_block_number + 1;
         let (finalized_check_point_index, _) = self.storage.get_last_check_point();
-        let could_ask_more = self.peers.could_request_more_block_filters(
-            finalized_check_point_index,
-            min_filtered_block_number,
-        );
+        let could_ask_more = self
+            .peers
+            .could_request_more_block_filters(
+                finalized_check_point_index,
+                min_filtered_block_number,
+            )
+            .await;
         if log_enabled!(Level::Trace) {
             let finalized_check_point_number = self
                 .peers
                 .calc_check_point_number(finalized_check_point_index);
+            #[cfg(target_arch = "wasm32")]
+            let (cached_check_point_index, cached_hashes) =
+                self.peers.get_cached_block_filter_hashes().await;
+            #[cfg(not(target_arch = "wasm32"))]
             let (cached_check_point_index, cached_hashes) =
                 self.peers.get_cached_block_filter_hashes();
+
             let cached_check_point_number =
                 self.peers.calc_check_point_number(cached_check_point_index);
             let next_cached_check_point_number = self
@@ -179,7 +204,7 @@ impl FilterProtocol {
                         self.send_get_block_filters(nc, *peer, start_number);
                     }
                 }
-            } else if self.should_ask(immediately) && could_ask_more {
+            } else if self.should_ask(immediately).await && could_ask_more {
                 debug!(
                     "send get block filters to {}, start_number={}",
                     peer, start_number
@@ -193,15 +218,26 @@ impl FilterProtocol {
         }
     }
 
-    pub(crate) fn try_send_get_block_filter_hashes(&self, nc: BoxedCKBProtocolContext) {
+    pub(crate) async fn try_send_get_block_filter_hashes(&self, nc: BoxedCKBProtocolContext) {
         let min_filtered_block_number = self.storage.get_min_filtered_block_number();
+        #[cfg(target_arch = "wasm32")]
+        self.peers
+            .update_min_filtered_block_number(min_filtered_block_number)
+            .await;
+        #[cfg(not(target_arch = "wasm32"))]
         self.peers
             .update_min_filtered_block_number(min_filtered_block_number);
+
         let finalized_check_point_index = self.storage.get_max_check_point_index();
+        #[cfg(target_arch = "wasm32")]
+        let cached_check_point_index = self.peers.get_cached_block_filter_hashes().await.0;
+        #[cfg(not(target_arch = "wasm32"))]
         let cached_check_point_index = self.peers.get_cached_block_filter_hashes().0;
+
         if let Some(start_number) = self
             .peers
             .if_cached_block_filter_hashes_require_update(finalized_check_point_index)
+            .await
         {
             let best_peers = self
                 .peers
@@ -378,7 +414,9 @@ impl CKBProtocolHandler for FilterProtocol {
 
         let item_name = msg.item_name();
         let status = self.try_process(Arc::clone(&nc), peer, msg).await;
-        status.process(nc, &self.peers, peer, "BlockFilter", item_name);
+        status
+            .process(nc, &self.peers, peer, "BlockFilter", item_name)
+            .await;
     }
 
     async fn notify(&mut self, nc: BoxedCKBProtocolContext, token: u64) {
@@ -387,7 +425,7 @@ impl CKBProtocolHandler for FilterProtocol {
                 self.try_send_get_block_filters(nc, false).await;
             }
             GET_BLOCK_FILTER_HASHES_TOKEN => {
-                self.try_send_get_block_filter_hashes(nc);
+                self.try_send_get_block_filter_hashes(nc).await;
             }
             GET_BLOCK_FILTER_CHECK_POINTS_TOKEN => {
                 let peers = self.peers.get_peers_which_require_more_check_points();

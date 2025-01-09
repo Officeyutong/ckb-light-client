@@ -157,11 +157,11 @@ impl Status {
     }
 
     /// Whether the session should be banned.
-    pub fn should_ban(&self, peers: &Peers, index: PeerIndex) -> Option<Duration> {
+    pub async fn should_ban(&self, peers: &Peers, index: PeerIndex) -> Option<Duration> {
         let code = self.code() as u16;
         if (400..500).contains(&code) {
             // TODO Resort the error codes, let malformed messages, which lead to be banned directly, to be together.
-            if code == 400 || peers.should_ban(index) {
+            if code == 400 || peers.should_ban(index).await {
                 Some(BAD_MESSAGE_BAN_TIME)
             } else {
                 None
@@ -182,7 +182,7 @@ impl Status {
         self.code
     }
 
-    pub fn process(
+    pub async fn process(
         &self,
         nc: BoxedCKBProtocolContext,
         peers: &Peers,
@@ -190,7 +190,7 @@ impl Status {
         protocol: &str,
         message: &str,
     ) {
-        if let Some(ban_time) = self.should_ban(peers, index) {
+        if let Some(ban_time) = self.should_ban(peers, index).await {
             error!(
                 "{}Protocol.received {} from {}, result {}, ban {:?}",
                 protocol, message, index, self, ban_time

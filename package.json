@@ -3,7 +3,7 @@
     "name": "ckb-light-client",
     "workspaces": [
         "./wasm/light-client-db-worker",
-        "./light-client-wasm",
+        "./wasm/light-client-wasm",
         "./wasm/light-client-js"
     ]
 }

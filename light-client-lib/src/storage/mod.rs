@@ -1,14 +1,12 @@
-use std::sync::RwLock;
 use std::{collections::HashMap, sync::Arc};
 
 use ckb_traits::{
     CellDataProvider, ExtensionProvider, HeaderFields, HeaderFieldsProvider, HeaderProvider,
 };
-use ckb_types::core::cell::CellMeta;
 use ckb_types::{
     bytes::Bytes,
     core::{
-        cell::{CellProvider, CellStatus},
+        cell::{CellMeta, CellProvider, CellStatus},
         BlockNumber, BlockView, HeaderView,
     },
     packed::{self, Byte32, CellOutput, Header, OutPoint, Script, Transaction},
@@ -106,11 +104,31 @@ impl FilterDataProvider for WrappedBlockView<'_> {
 pub struct StorageWithChainData {
     pub(crate) storage: Storage,
     pub(crate) peers: Arc<Peers>,
-    pending_txs: Arc<RwLock<PendingTxs>>,
+    #[cfg(target_arch = "wasm32")]
+    pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
 }
 
 impl StorageWithChainData {
-    pub fn new(storage: Storage, peers: Arc<Peers>, pending_txs: Arc<RwLock<PendingTxs>>) -> Self {
+    #[cfg(target_arch = "wasm32")]
+    pub fn new(
+        storage: Storage,
+        peers: Arc<Peers>,
+        pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
+    ) -> Self {
+        Self {
+            storage,
+            peers,
+            pending_txs,
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new(
+        storage: Storage,
+        peers: Arc<Peers>,
+        pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
+    ) -> Self {
         Self {
             storage,
             peers,
@@ -125,10 +143,15 @@ impl StorageWithChainData {
     pub fn peers(&self) -> &Arc<Peers> {
         &self.peers
     }
-
-    pub fn pending_txs(&self) -> &RwLock<PendingTxs> {
+    #[cfg(target_arch = "wasm32")]
+    pub fn pending_txs(&self) -> &tokio::sync::RwLock<PendingTxs> {
         &self.pending_txs
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn pending_txs(&self) -> &std::sync::RwLock<PendingTxs> {
+        &self.pending_txs
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub fn matched_blocks(
         &self,
@@ -163,11 +186,8 @@ impl CellProvider for StorageWithChainData {
         match self.storage.cell(out_point, eager_load) {
             CellStatus::Live(cell_meta) => CellStatus::Live(cell_meta),
             _ => {
-                if let Some((tx, _, _)) = self
-                    .pending_txs
-                    .read()
-                    .expect("poisoned")
-                    .get(&out_point.tx_hash())
+                // Safe to call blocking_read() here, CellProvider::cell will only be called from sync APIs
+                if let Some((tx, _, _)) = self.pending_txs.blocking_read().get(&out_point.tx_hash())
                 {
                     if let Some(cell_output) = tx.raw().outputs().get(out_point.index().unpack()) {
                         let output_data = tx

@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, HashSet},
     fmt, mem,
     num::NonZeroU32,
-    sync::Mutex,
 };
 
 use ckb_network::PeerIndex;
@@ -43,7 +42,10 @@ pub struct Peers {
     // - Block filter hashes between current cached check point and next cached check point.
     //   - Exclude the cached check point.
     //   - Include at the next cached check point.
+    #[cfg(not(target_arch = "wasm32"))]
     cached_block_filter_hashes: std::sync::RwLock<(u32, Vec<packed::Byte32>)>,
+    #[cfg(target_arch = "wasm32")]
+    cached_block_filter_hashes: tokio::sync::RwLock<(u32, Vec<packed::Byte32>)>,
 
     #[cfg(not(test))]
     max_outbound_peers: u32,
@@ -54,7 +56,11 @@ pub struct Peers {
     check_point_interval: BlockNumber,
     start_check_point: (u32, packed::Byte32),
 
-    rate_limiter: Mutex<BadMessageRateLimiter<PeerIndex>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    rate_limiter: std::sync::Mutex<BadMessageRateLimiter<PeerIndex>>,
+    #[cfg(target_arch = "wasm32")]
+    rate_limiter: tokio::sync::Mutex<BadMessageRateLimiter<PeerIndex>>,
+
     #[cfg(test)]
     bad_message_allowed_each_hour: u32,
 }
@@ -1141,7 +1147,11 @@ impl Peers {
             };
             let max_burst = unsafe { NonZeroU32::new_unchecked(limit) };
             let quota = Quota::per_hour(max_burst);
-            Mutex::new(RateLimiter::keyed(quota))
+            #[cfg(target_arch = "wasm32")]
+            let limiter = tokio::sync::Mutex::new(RateLimiter::keyed(quota));
+            #[cfg(not(target_arch = "wasm32"))]
+            let limiter = std::sync::Mutex::new(RateLimiter::keyed(quota));
+            limiter
         };
 
         Self {
@@ -1302,10 +1312,13 @@ impl Peers {
         self.inner.insert(index, peer);
     }
 
-    pub(crate) fn remove_peer(&self, index: PeerIndex) {
+    pub(crate) async fn remove_peer(&self, index: PeerIndex) {
         self.mark_fetching_headers_timeout(index);
         self.mark_fetching_txs_timeout(index);
         self.inner.remove(&index);
+        #[cfg(target_arch = "wasm32")]
+        self.rate_limiter.lock().await.retain_recent();
+        #[cfg(not(target_arch = "wasm32"))]
         let _ignore_error = self.rate_limiter.lock().map(|inner| inner.retain_recent());
     }
 
@@ -1648,7 +1661,21 @@ impl Peers {
             Err(StatusCode::PeerIsNotFound.into())
         }
     }
-
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) async fn update_min_filtered_block_number(
+        &self,
+        min_filtered_block_number: BlockNumber,
+    ) {
+        let should_cached_check_point_index =
+            self.calc_cached_check_point_index_when_sync_at(min_filtered_block_number + 1);
+        let current_cached_check_point_index = self.cached_block_filter_hashes.read().await.0;
+        if current_cached_check_point_index != should_cached_check_point_index {
+            let mut tmp = self.cached_block_filter_hashes.write().await;
+            tmp.0 = should_cached_check_point_index;
+            tmp.1.clear();
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn update_min_filtered_block_number(&self, min_filtered_block_number: BlockNumber) {
         let should_cached_check_point_index =
             self.calc_cached_check_point_index_when_sync_at(min_filtered_block_number + 1);
@@ -1661,22 +1688,36 @@ impl Peers {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) async fn get_cached_block_filter_hashes(&self) -> (u32, Vec<packed::Byte32>) {
+        self.cached_block_filter_hashes.read().await.clone()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn get_cached_block_filter_hashes(&self) -> (u32, Vec<packed::Byte32>) {
         self.cached_block_filter_hashes
             .read()
             .expect("poisoned")
             .clone()
     }
-
-    pub(crate) fn update_cached_block_filter_hashes(&self, hashes: Vec<packed::Byte32>) {
-        self.cached_block_filter_hashes.write().expect("poisoned").1 = hashes;
+    pub(crate) async fn update_cached_block_filter_hashes(&self, hashes: Vec<packed::Byte32>) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.cached_block_filter_hashes.write().await.1 = hashes;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.cached_block_filter_hashes.write().expect("poisoned").1 = hashes;
+        }
     }
 
-    pub(crate) fn if_cached_block_filter_hashes_require_update(
+    pub(crate) async fn if_cached_block_filter_hashes_require_update(
         &self,
         finalized_check_point_index: u32,
     ) -> Option<BlockNumber> {
         let (cached_index, cached_length) = {
+            #[cfg(target_arch = "wasm32")]
+            let tmp = self.cached_block_filter_hashes.read().await;
+            #[cfg(not(target_arch = "wasm32"))]
             let tmp = self.cached_block_filter_hashes.read().expect("poisoned");
             (tmp.0, tmp.1.len())
         };
@@ -1841,7 +1882,7 @@ impl Peers {
         result
     }
 
-    pub(crate) fn could_request_more_block_filters(
+    pub(crate) async fn could_request_more_block_filters(
         &self,
         finalized_check_point_index: u32,
         min_filtered_block_number: BlockNumber,
@@ -1860,7 +1901,11 @@ impl Peers {
             // Check:
             // - If cached block filter hashes is same check point as the required,
             // - If all block filter hashes in that check point are downloaded.
+            #[cfg(target_arch = "wasm32")]
+            let cached_data = self.get_cached_block_filter_hashes().await;
+            #[cfg(not(target_arch = "wasm32"))]
             let cached_data = self.get_cached_block_filter_hashes();
+
             let current_cached_check_point_index = cached_data.0;
             should_cached_check_point_index == current_cached_check_point_index
                 && cached_data.1.len() as BlockNumber == self.check_point_interval
@@ -1993,16 +2038,27 @@ impl Peers {
             .collect()
     }
 
-    pub(crate) fn should_ban(&self, peer_index: PeerIndex) -> bool {
+    pub(crate) async fn should_ban(&self, peer_index: PeerIndex) -> bool {
         #[cfg(test)]
         if self.bad_message_allowed_each_hour == 0 {
             return true;
         }
-        self.rate_limiter
+        #[cfg(target_arch = "wasm32")]
+        let result = self
+            .rate_limiter
+            .lock()
+            .await
+            .check_key(&peer_index)
+            .map_err(|_| ())
+            .is_err();
+        #[cfg(not(target_arch = "wasm32"))]
+        let result = self
+            .rate_limiter
             .lock()
             .map_err(|_| ())
             .and_then(|inner| inner.check_key(&peer_index).map_err(|_| ()))
-            .is_err()
+            .is_err();
+        result
     }
 }
 

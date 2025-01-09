@@ -3,7 +3,7 @@ use ckb_network::{
     async_trait, bytes::Bytes, BoxedCKBProtocolContext, CKBProtocolHandler, PeerIndex,
 };
 use ckb_types::{packed, prelude::*};
-use log::{debug, info, trace, warn};
+use log::{info, trace, warn};
 use std::collections::HashSet;
 use std::sync::Arc;
 

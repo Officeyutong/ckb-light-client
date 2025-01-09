@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicU8, Ordering},
-        Arc, RwLock,
+        Arc,
     },
 };
 
@@ -44,9 +44,9 @@ use ckb_types::{core, packed, prelude::*, H256};
 
 use std::sync::OnceLock;
 
-static MAINNET_CONFIG: &str = include_str!("../../config/mainnet.toml");
+static MAINNET_CONFIG: &str = include_str!("../../../config/mainnet.toml");
 
-static TESTNET_CONFIG: &str = include_str!("../../config/testnet.toml");
+static TESTNET_CONFIG: &str = include_str!("../../../config/testnet.toml");
 
 static STORAGE_WITH_DATA: OnceLock<StorageWithChainData> = OnceLock::new();
 
@@ -123,7 +123,7 @@ pub async fn light_client(
 
     storage.init_genesis_block(genesis);
 
-    let pending_txs = Arc::new(RwLock::new(PendingTxs::default()));
+    let pending_txs = Arc::new(tokio::sync::RwLock::new(PendingTxs::default()));
     let max_outbound_peers = config.network.max_outbound_peers;
     let network_secret_key =
         serde_wasm_bindgen::from_value(network_secret_key).expect("Invalid network secret key");
@@ -1157,10 +1157,7 @@ pub fn send_transaction(tx: JsValue) -> Result<Vec<u8>, JsValue> {
         &swc.storage().get_last_state().1.into_view(),
     )
     .map_err(|e| JsValue::from_str(&format!("invalid transaction: {:?}", e)))?;
-    swc.pending_txs()
-        .write()
-        .expect("pending_txs lock is poisoned")
-        .push(tx.clone(), cycles);
+    swc.pending_txs().blocking_write().push(tx.clone(), cycles);
 
     Ok(Unpack::<H256>::unpack(&tx.hash()).0.to_vec())
 }
@@ -1186,12 +1183,7 @@ pub fn get_transaction(tx_hash: &str) -> Result<JsValue, JsValue> {
         .serialize(&SERIALIZER)?);
     }
 
-    if let Some((transaction, cycles, _)) = swc
-        .pending_txs()
-        .read()
-        .expect("pending_txs lock is poisoned")
-        .get(&tx_hash.pack())
-    {
+    if let Some((transaction, cycles, _)) = swc.pending_txs().blocking_read().get(&tx_hash.pack()) {
         return Ok((TransactionWithStatus {
             transaction: Some(transaction.into_view().into()),
             cycles: Some(cycles.into()),
