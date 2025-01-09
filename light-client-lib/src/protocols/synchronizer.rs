@@ -65,10 +65,6 @@ impl CKBProtocolHandler for SyncProtocol {
                 #[cfg(not(target_arch = "wasm32"))]
                 let mut matched_blocks = self.peers.matched_blocks().write().expect("poisoned");
                 self.peers.add_block(&mut matched_blocks, new_block);
-                debug!(
-                    "Handling sendblock, peers.matched_blocks={:?}",
-                    matched_blocks
-                );
                 if !matched_blocks.is_empty()
                     && self.peers.all_matched_blocks_downloaded(&matched_blocks)
                 {
