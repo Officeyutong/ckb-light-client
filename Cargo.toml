@@ -6,7 +6,6 @@ members = [
     "./wasm/light-client-db-worker",
     "./wasm/light-client-db-common",
 ]
-# exclude = ["light-client-bin"]
 
 resolver = "2"
 

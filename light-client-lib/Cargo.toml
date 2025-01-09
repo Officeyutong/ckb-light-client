@@ -12,19 +12,19 @@ repository = "https://github.com/nervosnetwork/ckb-light-client"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ckb-app-config = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-constant = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-types = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-network = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-jsonrpc-types = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-error = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-script = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-chain-spec = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-traits = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-resource = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-verification = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-hash = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
+ckb-app-config = "0.121.0-rc1"
+ckb-constant = "0.121.0-rc1"
+ckb-types = "0.121.0-rc1"
+ckb-network = "0.121.0-rc1"
+ckb-jsonrpc-types = "0.121.0-rc1"
+ckb-error = "0.121.0-rc1"
+ckb-script = "0.121.0-rc1"
+ckb-chain-spec = "0.121.0-rc1"
+ckb-traits = "0.121.0-rc1"
+ckb-resource = "0.121.0-rc1"
+ckb-verification = "0.121.0-rc1"
+ckb-hash = "0.121.0-rc1"
+ckb-systemtime = "0.121.0-rc1"
 
 log = "0.4.14"
 path-clean = "0.1.0"
@@ -65,13 +65,11 @@ serde_json = "1.0.134"
 wasm-bindgen-test = "0.3.45"
 
 [dev-dependencies]
-ckb-shared = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-chain = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-tx-pool = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-store = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c" }
-ckb-systemtime = { git = "https://github.com/nervosnetwork/ckb", rev = "b8cb85c", features = [
-    "enable_faketime",
-] }
+ckb-shared = "0.121.0-rc1"
+ckb-chain = "0.121.0-rc1"
+ckb-tx-pool = "0.121.0-rc1"
+ckb-store = "0.121.0-rc1"
+ckb-systemtime = { version = "0.121.0-rc1", features = ["enable_faketime"] }
 tempfile = "3.0"
 rand = "0.6"
 serde_json = "1.0"
