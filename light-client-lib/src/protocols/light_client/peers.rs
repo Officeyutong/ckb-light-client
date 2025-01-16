@@ -18,7 +18,10 @@ use dashmap::DashMap;
 use governor::{clock::DefaultClock, state::keyed::DefaultKeyedStateStore, Quota, RateLimiter};
 
 use super::prelude::*;
-use crate::protocols::{Status, StatusCode, BAD_MESSAGE_ALLOWED_EACH_HOUR, MESSAGE_TIMEOUT};
+use crate::{
+    protocols::{Status, StatusCode, BAD_MESSAGE_ALLOWED_EACH_HOUR, MESSAGE_TIMEOUT},
+    types::{GeneralMutex, GeneralRwLock},
+};
 
 pub type BadMessageRateLimiter<T> = RateLimiter<T, DefaultKeyedStateStore<T>, DefaultClock>;
 
@@ -32,20 +35,14 @@ pub struct Peers {
     // The matched block filters to download, the key is the block hash, the value is:
     //   * if the block is proved
     //   * the downloaded block
-    #[cfg(not(target_arch = "wasm32"))]
-    matched_blocks: std::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>>,
-    #[cfg(target_arch = "wasm32")]
-    matched_blocks: tokio::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>>,
+    matched_blocks: GeneralRwLock<HashMap<H256, (bool, Option<packed::Block>)>>,
 
     // Data:
     // - Cached check point index.
     // - Block filter hashes between current cached check point and next cached check point.
     //   - Exclude the cached check point.
     //   - Include at the next cached check point.
-    #[cfg(not(target_arch = "wasm32"))]
-    cached_block_filter_hashes: std::sync::RwLock<(u32, Vec<packed::Byte32>)>,
-    #[cfg(target_arch = "wasm32")]
-    cached_block_filter_hashes: tokio::sync::RwLock<(u32, Vec<packed::Byte32>)>,
+    cached_block_filter_hashes: GeneralRwLock<(u32, Vec<packed::Byte32>)>,
 
     #[cfg(not(test))]
     max_outbound_peers: u32,
@@ -56,10 +53,7 @@ pub struct Peers {
     check_point_interval: BlockNumber,
     start_check_point: (u32, packed::Byte32),
 
-    #[cfg(not(target_arch = "wasm32"))]
-    rate_limiter: std::sync::Mutex<BadMessageRateLimiter<PeerIndex>>,
-    #[cfg(target_arch = "wasm32")]
-    rate_limiter: tokio::sync::Mutex<BadMessageRateLimiter<PeerIndex>>,
+    rate_limiter: GeneralMutex<BadMessageRateLimiter<PeerIndex>>,
 
     #[cfg(test)]
     bad_message_allowed_each_hour: u32,
@@ -1137,7 +1131,7 @@ impl Peers {
         bad_message_allowed_each_hour: u32,
     ) -> Self {
         #[cfg(test)]
-        let max_outbound_peers = RwLock::new(max_outbound_peers);
+        let max_outbound_peers = std::sync::RwLock::new(max_outbound_peers);
 
         let rate_limiter = {
             let limit = if bad_message_allowed_each_hour == 0 {
@@ -1147,11 +1141,7 @@ impl Peers {
             };
             let max_burst = unsafe { NonZeroU32::new_unchecked(limit) };
             let quota = Quota::per_hour(max_burst);
-            #[cfg(target_arch = "wasm32")]
-            let limiter = tokio::sync::Mutex::new(RateLimiter::keyed(quota));
-            #[cfg(not(target_arch = "wasm32"))]
-            let limiter = std::sync::Mutex::new(RateLimiter::keyed(quota));
-            limiter
+            GeneralMutex::new(RateLimiter::keyed(quota))
         };
 
         Self {
@@ -1278,17 +1268,8 @@ impl Peers {
             }
         }
     }
-    #[cfg(target_arch = "wasm32")]
-    pub fn matched_blocks(
-        &self,
-    ) -> &tokio::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
-        &self.matched_blocks
-    }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn matched_blocks(
-        &self,
-    ) -> &std::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+    pub fn matched_blocks(&self) -> &GeneralRwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
         &self.matched_blocks
     }
 

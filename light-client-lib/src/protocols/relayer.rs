@@ -16,6 +16,7 @@ use web_time::{Duration, Instant};
 
 use crate::protocols::{Peers, BAD_MESSAGE_BAN_TIME};
 use crate::storage::Storage;
+use crate::types::GeneralRwLock;
 
 const CHECK_PENDING_TXS_TOKEN: u64 = 0;
 
@@ -24,10 +25,8 @@ pub struct RelayProtocol {
     // Record the peers which have opened the relay protocol, value is used to close the protocol in the inactive period
     opened_peers: HashMap<PeerIndex, Option<Instant>>,
     // Pending transactions which are waiting for relay
-    #[cfg(target_arch = "wasm32")]
-    pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
+    pending_txs: Arc<GeneralRwLock<PendingTxs>>,
+
     consensus: Consensus,
     storage: Storage,
     v3: bool,
@@ -90,26 +89,8 @@ impl PendingTxs {
 }
 
 impl RelayProtocol {
-    #[cfg(target_arch = "wasm32")]
     pub fn new(
-        pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
-        connected_peers: Arc<Peers>,
-        consensus: Consensus,
-        storage: Storage,
-        v3: bool,
-    ) -> Self {
-        Self {
-            opened_peers: HashMap::new(),
-            pending_txs,
-            connected_peers,
-            consensus,
-            storage,
-            v3,
-        }
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(
-        pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
+        pending_txs: Arc<GeneralRwLock<PendingTxs>>,
         connected_peers: Arc<Peers>,
         consensus: Consensus,
         storage: Storage,

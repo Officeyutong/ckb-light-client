@@ -38,3 +38,16 @@ impl fmt::Display for RunEnv {
             .and_then(|s| write!(f, "{}", s))
     }
 }
+
+/**
+ * RwLock type used on wasm. On wasm, std::sync::RwLock doesn't work properly on single-thread async environment.
+ */
+#[cfg(target_arch = "wasm32")]
+pub type GeneralRwLock<T> = tokio::sync::RwLock<T>;
+#[cfg(target_arch = "wasm32")]
+pub type GeneralMutex<T> = tokio::sync::Mutex<T>;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub type GeneralRwLock<T> = std::sync::RwLock<T>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type GeneralMutex<T> = std::sync::Mutex<T>;

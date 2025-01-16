@@ -23,7 +23,10 @@ pub use db::{Batch, CursorDirection, Storage};
 #[cfg(not(target_arch = "wasm32"))]
 pub use db::{Batch, Storage};
 
-use crate::protocols::{Peers, PendingTxs};
+use crate::{
+    protocols::{Peers, PendingTxs},
+    types::GeneralRwLock,
+};
 
 pub const LAST_STATE_KEY: &str = "LAST_STATE";
 const GENESIS_BLOCK_KEY: &str = "GENESIS_BLOCK";
@@ -104,30 +107,14 @@ impl FilterDataProvider for WrappedBlockView<'_> {
 pub struct StorageWithChainData {
     pub(crate) storage: Storage,
     pub(crate) peers: Arc<Peers>,
-    #[cfg(target_arch = "wasm32")]
-    pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
+    pending_txs: Arc<GeneralRwLock<PendingTxs>>,
 }
 
 impl StorageWithChainData {
-    #[cfg(target_arch = "wasm32")]
     pub fn new(
         storage: Storage,
         peers: Arc<Peers>,
-        pending_txs: Arc<tokio::sync::RwLock<PendingTxs>>,
-    ) -> Self {
-        Self {
-            storage,
-            peers,
-            pending_txs,
-        }
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(
-        storage: Storage,
-        peers: Arc<Peers>,
-        pending_txs: Arc<std::sync::RwLock<PendingTxs>>,
+        pending_txs: Arc<GeneralRwLock<PendingTxs>>,
     ) -> Self {
         Self {
             storage,
@@ -143,28 +130,14 @@ impl StorageWithChainData {
     pub fn peers(&self) -> &Arc<Peers> {
         &self.peers
     }
-    #[cfg(target_arch = "wasm32")]
-    pub fn pending_txs(&self) -> &tokio::sync::RwLock<PendingTxs> {
-        &self.pending_txs
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn pending_txs(&self) -> &std::sync::RwLock<PendingTxs> {
+
+    pub fn pending_txs(&self) -> &GeneralRwLock<PendingTxs> {
         &self.pending_txs
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub fn matched_blocks(
-        &self,
-    ) -> &tokio::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+    pub fn matched_blocks(&self) -> &GeneralRwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
         self.peers.matched_blocks()
     }
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn matched_blocks(
-        &self,
-    ) -> &std::sync::RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
-        self.peers.matched_blocks()
-    }
-
     /// return (added_ts, first_sent, missing)
     pub fn get_header_fetch_info(&self, block_hash: &H256) -> Option<(u64, u64, bool)> {
         self.peers.get_header_fetch_info(&block_hash.pack())
