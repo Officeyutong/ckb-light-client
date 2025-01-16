@@ -36,6 +36,26 @@ jobs:
           rustup target add wasm32-unknown-unknown
       - name: Lint Check
         run: make clippy
+  test-wasm:
+    name: Tests / Build & Test (Wasm)
+    needs: [ rustfmt, clippy ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the Repository
+        uses: actions/checkout@v4
+      - name: Setup nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: |
+          cargo install wasm-pack
+      - name: Build
+        run: |
+          make build-wasm
+      - name: Run unit-tests with wasm-pack
+        run: |
+          make test-wasm
   test:
     name: Tests / Build & Test
     needs: [ rustfmt, clippy ]

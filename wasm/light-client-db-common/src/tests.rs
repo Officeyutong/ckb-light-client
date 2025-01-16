@@ -3,6 +3,7 @@ use web_sys::js_sys::{Int32Array, SharedArrayBuffer, Uint8Array};
 
 use crate::{read_command_payload, write_command_with_payload, InputCommand, OutputCommand};
 
+#[allow(unused)]
 #[wasm_bindgen_test]
 fn test_command_conversion() {
     assert_eq!(InputCommand::DbRequest as i32, 2);
@@ -11,6 +12,7 @@ fn test_command_conversion() {
     assert!(OutputCommand::try_from(20 as i32).is_ok());
 }
 
+#[allow(unused)]
 #[wasm_bindgen_test]
 fn test_command_write() {
     let arr_buf = SharedArrayBuffer::new(100);
@@ -31,6 +33,7 @@ fn test_command_write() {
     assert_eq!(result, vec![1, 2, 3, 4]);
 }
 
+#[allow(unused)]
 #[wasm_bindgen_test]
 fn test_command_read() {
     let arr_buf = SharedArrayBuffer::new(100);

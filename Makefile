@@ -17,11 +17,18 @@ clippy:
 build:
 	cargo build
 
+build-wasm:
+	npm install
+	npm run build -ws
+
 test:
 	cargo nextest run --hide-progress-bar --success-output immediate --failure-output immediate
 
 test-portable:
 	cargo nextest run --features portable --hide-progress-bar --success-output immediate --failure-output immediate
+
+test-wasm:
+	wasm-pack test --node ./wasm/light-client-db-common/
 
 coverage-clean:
 	rm -rf "${CARGO_TARGET_DIR}/*.profraw" "${GRCOV_OUTPUT}" "${GRCOV_OUTPUT:.info=}"
