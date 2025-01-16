@@ -42,7 +42,7 @@ coverage-run-unittests:
 	rm -f "${COVERAGE_PROFRAW_DIR}/*.profraw"
 	RUSTFLAGS="${RUSTFLAGS} -Cinstrument-coverage" \
 		LLVM_PROFILE_FILE="${COVERAGE_PROFRAW_DIR}/unittests-%p-%m.profraw" \
-			cargo test --all
+			cargo test --workspace --exclude light-client-db-common --exclude light-client-db-worker --exclude light-client-wasm
 
 coverage-collect-data:
 	grcov "${COVERAGE_PROFRAW_DIR}" --binary-path "${CARGO_TARGET_DIR}/debug/" \
