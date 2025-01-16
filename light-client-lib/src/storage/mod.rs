@@ -222,69 +222,6 @@ impl CellDataProvider for StorageWithChainData {
         unreachable!()
     }
 }
-#[cfg(target_arch = "wasm32")]
-impl HeaderProvider for StorageWithChainData {
-    fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
-        self.storage
-            .get_header(hash)
-            .or_else(|| self.peers.find_header_in_proved_state(hash))
-    }
-}
-#[cfg(target_arch = "wasm32")]
-impl HeaderFieldsProvider for StorageWithChainData {
-    fn get_header_fields(&self, hash: &Byte32) -> Option<HeaderFields> {
-        self.get_header(hash).map(|header| HeaderFields {
-            hash: header.hash(),
-            number: header.number(),
-            epoch: header.epoch(),
-            timestamp: header.timestamp(),
-            parent_hash: header.parent_hash(),
-        })
-    }
-}
-#[cfg(target_arch = "wasm32")]
-impl ExtensionProvider for StorageWithChainData {
-    fn get_block_extension(&self, hash: &packed::Byte32) -> Option<packed::Bytes> {
-        self.storage
-            .get(Key::BlockHash(hash).into_vec())
-            .map(|v| {
-                v.map(|v| {
-                    if v.len() > Header::TOTAL_SIZE {
-                        Some(
-                            packed::Bytes::from_slice(&v[Header::TOTAL_SIZE..])
-                                .expect("stored block extension"),
-                        )
-                    } else {
-                        None
-                    }
-                })
-            })
-            .expect("db get should be ok")
-            .flatten()
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl HeaderProvider for StorageWithChainData {
-    fn get_header(&self, hash: &packed::Byte32) -> Option<HeaderView> {
-        self.storage
-            .get_header(hash)
-            .or_else(|| self.peers.find_header_in_proved_state(hash))
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl HeaderFieldsProvider for StorageWithChainData {
-    fn get_header_fields(&self, hash: &Byte32) -> Option<HeaderFields> {
-        self.get_header(hash).map(|header| HeaderFields {
-            hash: header.hash(),
-            number: header.number(),
-            epoch: header.epoch(),
-            timestamp: header.timestamp(),
-            parent_hash: header.parent_hash(),
-        })
-    }
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 impl CellDataProvider for StorageWithChainData {
@@ -333,7 +270,14 @@ impl CellProvider for StorageWithChainData {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+impl HeaderProvider for StorageWithChainData {
+    fn get_header(&self, hash: &Byte32) -> Option<HeaderView> {
+        self.storage
+            .get_header(hash)
+            .or_else(|| self.peers.find_header_in_proved_state(hash))
+    }
+}
+
 impl ExtensionProvider for StorageWithChainData {
     fn get_block_extension(&self, hash: &Byte32) -> Option<packed::Bytes> {
         self.storage
@@ -352,6 +296,18 @@ impl ExtensionProvider for StorageWithChainData {
             })
             .expect("db get should be ok")
             .flatten()
+    }
+}
+
+impl HeaderFieldsProvider for StorageWithChainData {
+    fn get_header_fields(&self, hash: &Byte32) -> Option<HeaderFields> {
+        self.get_header(hash).map(|header| HeaderFields {
+            hash: header.hash(),
+            number: header.number(),
+            epoch: header.epoch(),
+            timestamp: header.timestamp(),
+            parent_hash: header.parent_hash(),
+        })
     }
 }
 
