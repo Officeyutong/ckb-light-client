@@ -32,6 +32,8 @@ jobs:
         run: |
           rustup toolchain install ${{ env.RUST_TOOLCHAIN }} --profile minimal --component clippy
           rustup override set ${{ env.RUST_TOOLCHAIN }}
+          # For wasm targets
+          rustup target add wasm32-unknown-unknown
       - name: Lint Check
         run: make clippy
   test:
