@@ -22,10 +22,10 @@ build-wasm:
 	npm run build -ws
 
 test:
-	cargo nextest run --hide-progress-bar --success-output immediate --failure-output immediate
+	cargo nextest run --hide-progress-bar --success-output immediate --failure-output immediate -p ckb-light-client-lib -p ckb-light-client
 
 test-portable:
-	cargo nextest run --features portable --hide-progress-bar --success-output immediate --failure-output immediate
+	cargo nextest run --features portable --hide-progress-bar --success-output immediate --failure-output immediate -p ckb-light-client-lib -p ckb-light-client
 
 test-wasm:
 	wasm-pack test --node ./wasm/light-client-db-common/
