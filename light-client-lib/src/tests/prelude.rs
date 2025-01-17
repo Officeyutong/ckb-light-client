@@ -85,7 +85,7 @@ pub(crate) trait SnapshotExt {
         self.get_block_ext_by_number(num)
             .map(|block_ext| block_ext.total_difficulty)
     }
-
+    #[allow(unused)]
     fn build_last_state_by_number(&self, num: BlockNumber) -> Option<packed::LightClientMessage> {
         self.get_verifiable_header_by_number(num).map(|header| {
             let content = packed::SendLastState::new_builder()
