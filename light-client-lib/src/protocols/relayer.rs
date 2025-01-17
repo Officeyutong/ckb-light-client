@@ -16,7 +16,7 @@ use web_time::{Duration, Instant};
 
 use crate::protocols::{Peers, BAD_MESSAGE_BAN_TIME};
 use crate::storage::Storage;
-use crate::types::GeneralRwLock;
+use crate::types::RwLock;
 
 const CHECK_PENDING_TXS_TOKEN: u64 = 0;
 
@@ -25,7 +25,7 @@ pub struct RelayProtocol {
     // Record the peers which have opened the relay protocol, value is used to close the protocol in the inactive period
     opened_peers: HashMap<PeerIndex, Option<Instant>>,
     // Pending transactions which are waiting for relay
-    pending_txs: Arc<GeneralRwLock<PendingTxs>>,
+    pending_txs: Arc<RwLock<PendingTxs>>,
 
     consensus: Consensus,
     storage: Storage,
@@ -90,7 +90,7 @@ impl PendingTxs {
 
 impl RelayProtocol {
     pub fn new(
-        pending_txs: Arc<GeneralRwLock<PendingTxs>>,
+        pending_txs: Arc<RwLock<PendingTxs>>,
         connected_peers: Arc<Peers>,
         consensus: Consensus,
         storage: Storage,

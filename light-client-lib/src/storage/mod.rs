@@ -25,7 +25,7 @@ pub use db::{Batch, Storage};
 
 use crate::{
     protocols::{Peers, PendingTxs},
-    types::GeneralRwLock,
+    types::RwLock,
 };
 
 pub const LAST_STATE_KEY: &str = "LAST_STATE";
@@ -107,15 +107,11 @@ impl FilterDataProvider for WrappedBlockView<'_> {
 pub struct StorageWithChainData {
     pub(crate) storage: Storage,
     pub(crate) peers: Arc<Peers>,
-    pending_txs: Arc<GeneralRwLock<PendingTxs>>,
+    pending_txs: Arc<RwLock<PendingTxs>>,
 }
 
 impl StorageWithChainData {
-    pub fn new(
-        storage: Storage,
-        peers: Arc<Peers>,
-        pending_txs: Arc<GeneralRwLock<PendingTxs>>,
-    ) -> Self {
+    pub fn new(storage: Storage, peers: Arc<Peers>, pending_txs: Arc<RwLock<PendingTxs>>) -> Self {
         Self {
             storage,
             peers,
@@ -131,11 +127,11 @@ impl StorageWithChainData {
         &self.peers
     }
 
-    pub fn pending_txs(&self) -> &GeneralRwLock<PendingTxs> {
+    pub fn pending_txs(&self) -> &RwLock<PendingTxs> {
         &self.pending_txs
     }
 
-    pub fn matched_blocks(&self) -> &GeneralRwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
+    pub fn matched_blocks(&self) -> &RwLock<HashMap<H256, (bool, Option<packed::Block>)>> {
         self.peers.matched_blocks()
     }
     /// return (added_ts, first_sent, missing)

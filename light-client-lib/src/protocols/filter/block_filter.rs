@@ -1,7 +1,7 @@
 use super::{components, BAD_MESSAGE_BAN_TIME};
 use crate::protocols::{Peers, Status, StatusCode};
 use crate::storage::Storage;
-use crate::types::GeneralRwLock;
+use crate::types::RwLock;
 use crate::utils::network::prove_or_download_matched_blocks;
 use ckb_constant::sync::INIT_BLOCKS_IN_TRANSIT_PER_PEER;
 use ckb_network::{
@@ -31,7 +31,7 @@ const GET_BLOCK_FILTERS_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct FilterProtocol {
     pub(crate) storage: Storage,
     pub(crate) peers: Arc<Peers>,
-    pub(crate) last_ask_time: Arc<GeneralRwLock<Option<Instant>>>,
+    pub(crate) last_ask_time: Arc<RwLock<Option<Instant>>>,
 }
 
 impl FilterProtocol {
