@@ -280,13 +280,11 @@ impl FilterProtocol {
                 components::BlockFilterHashesProcess::new(reader, self, nc, peer)
                     .execute()
                     .await
-                // Status::ok()
             }
             packed::BlockFilterMessageUnionReader::BlockFilters(reader) => {
                 components::BlockFiltersProcess::new(reader, self, nc, peer)
                     .execute()
                     .await
-                // Status::ok()
             }
             _ => StatusCode::UnexpectedProtocolMessage.into(),
         }
