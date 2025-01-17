@@ -75,12 +75,12 @@ pub(crate) trait SnapshotExt {
 
     fn get_verifiable_header_by_number(&self, num: BlockNumber)
         -> Option<packed::VerifiableHeader>;
-
+    #[allow(unused)]
     fn get_block_difficulty_by_number(&self, num: BlockNumber) -> Option<U256> {
         self.get_header_by_number(num)
             .map(|header| compact_to_difficulty(header.compact_target()))
     }
-
+    #[allow(unused)]
     fn get_total_difficulty_by_number(&self, num: BlockNumber) -> Option<U256> {
         self.get_block_ext_by_number(num)
             .map(|block_ext| block_ext.total_difficulty)
