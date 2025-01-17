@@ -50,11 +50,6 @@ discovery_local_address = false
 # Ensure that itself can continue to serve as a bootnode node
 bootnode_mode = false
 
-[rpc]
-# Light client rpc is designed for self hosting, exposing to public network is not recommended and may cause security issues.
-# By default RPC only binds to localhost, thus it only allows accessing from the same machine.
-listen_address = "127.0.0.1:9000"
-
 `
 
 await client.start({ type: "TestNet", config }, randomSecretKey(), "info");
